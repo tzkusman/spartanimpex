@@ -7,6 +7,10 @@ export default {
   theme: {
     extend: {
       colors: {
+        'cyan-DEFAULT': '#00E5FF',
+        'navy-dark': '#040E1A',
+        'navy-card': '#0C1E32',
+        'navy-border': '#142A44',
         // ── DEEP NAVY (Logo Background) ────────────────────────────
         navy: {
           50:    '#E8EEF8',

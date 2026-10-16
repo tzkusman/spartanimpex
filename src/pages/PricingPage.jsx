@@ -306,10 +306,10 @@ export default function PricingPage() {
                 <div>
                   <button
                     onClick={() => handleOpenCheckout(plan)}
-                    className={`w-full py-4 px-6 rounded-xl font-bold text-sm tracking-wider uppercase transition-all duration-300 flex items-center justify-center gap-2 shadow-lg ${
+                    className={`w-full py-4 px-6 rounded-xl font-bold text-sm tracking-wider uppercase transition-all duration-300 flex items-center justify-center gap-2 shadow-lg bg-navy border ${
                       isPopular
-                        ? 'bg-cyan-DEFAULT text-navy-dark hover:bg-cyan-300 hover:shadow-[0_0_25px_rgba(0,229,255,0.5)]'
-                        : 'bg-navy border border-cyan-DEFAULT/40 text-cyan-300 hover:bg-cyan-DEFAULT hover:text-navy-dark'
+                        ? 'border-2 border-cyan text-cyan-300 shadow-[0_0_20px_rgba(0,229,255,0.25)] hover:bg-cyan hover:text-navy-dark hover:shadow-[0_0_30px_rgba(0,229,255,0.6)]'
+                        : 'border border-cyan/40 text-cyan-300 hover:bg-cyan hover:text-navy-dark hover:shadow-[0_0_25px_rgba(0,229,255,0.4)]'
                     }`}
                   >
                     <span>Proceed to Checkout</span>
@@ -482,7 +482,7 @@ export default function PricingPage() {
                     <button
                       type="submit"
                       disabled={paymentLoading}
-                      className="w-full py-4 rounded-xl bg-cyan-DEFAULT text-navy-dark font-bold text-sm tracking-wider uppercase hover:bg-cyan-300 transition-all shadow-[0_0_20px_rgba(0,229,255,0.4)] flex items-center justify-center gap-2 disabled:opacity-50"
+                      className="w-full py-4 rounded-xl bg-cyan text-navy font-black text-sm tracking-wider uppercase hover:bg-cyan-300 transition-all shadow-[0_0_25px_rgba(0,229,255,0.5)] flex items-center justify-center gap-2 disabled:opacity-50" style={{ backgroundColor: "#00E5FF", color: "#040E1A" }}
                     >
                       {paymentLoading ? (
                         <>

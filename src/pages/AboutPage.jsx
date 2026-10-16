@@ -203,7 +203,7 @@ export default function AboutPage() {
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <div className="w-12 h-12 rounded-2xl bg-cyan-DEFAULT/10 border border-cyan-DEFAULT/30 flex items-center justify-center text-cyan-DEFAULT">
-                    <Github className="w-6 h-6" />
+                    <GithubIcon size={24} className="text-cyan-400" />
                   </div>
                   <span className="px-3 py-1 rounded-full text-xs font-semibold bg-navy border border-navy-border text-cyan-DEFAULT">
                     CIO & Principal Architect
