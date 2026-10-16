@@ -1,0 +1,419 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id        String   @id @default(uuid())
+  resumeId  String
+  title     String
+  subtitle  String?
+  date      String?
+  link      String?
+  bullets   Json     @default("[]")
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  Resume    Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+
+  @@index([resumeId])
+}
+
+model Skill {
+  id        String   @id @default(uuid())
+  resumeId  String
+  name      String
+  category  String?
+  level     String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  Resume    Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+
+  @@index([resumeId])
+}
+
+model AtsScan {
+  id              String   @id
+  userId          String?
+  resumeId        String?
+  score           Int
+  formattingScore Int?
+  contentScore    Int?
+  impactScore     Int?
+  issues          Json?
+  recommendations Json?
+  createdAt       DateTime @default(now())
+  Resume          Resume?  @relation(fields: [resumeId], references: [id])
+  User            User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([resumeId])
+  @@index([userId])
+}
+
+model Certification {
+  id        String   @id
+  resumeId  String
+  name      String
+  issuer    String?
+  date      String?
+  url       String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  Resume    Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+
+  @@index([resumeId])
+}
+
+model CoverLetter {
+  id        String   @id
+  userId    String?
+  resumeId  String?
+  title     String   @default("Untitled Cover Letter")
+  recipient String?
+  company   String?
+  jobTitle  String?
+  content   String
+  template  String   @default("standard")
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  Resume    Resume?  @relation(fields: [resumeId], references: [id])
+  User      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([resumeId])
+  @@index([userId])
+}
+
+model CreditLog {
+  id           String   @id
+  userId       String
+  reason       String
+  amount       Int
+  createdAt    DateTime @default(now())
+  balanceAfter Int?
+  User         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Education {
+  id           String   @id
+  resumeId     String
+  school       String
+  degree       String
+  fieldOfStudy String?
+  location     String?
+  year         String?
+  gpa          String?
+  honors       String?
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
+  Resume       Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+
+  @@index([resumeId])
+}
+
+model Experience {
+  id        String   @id
+  resumeId  String
+  role      String
+  company   String
+  location  String?
+  start     String?
+  end       String?
+  current   Boolean  @default(false)
+  bullets   Json     @default("[]")
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  Resume    Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+
+  @@index([resumeId])
+}
+
+model ExportLog {
+  id        String   @id
+  userId    String?
+  resumeId  String?
+  format    String
+  userAgent String?
+  createdAt DateTime @default(now())
+  Resume    Resume?  @relation(fields: [resumeId], references: [id])
+  User      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([resumeId])
+  @@index([userId])
+}
+
+model JobTarget {
+  id              String   @id
+  userId          String?
+  resumeId        String?
+  jobTitle        String?
+  company         String?
+  jobDescription  String
+  matchScore      Int?
+  matchedKeywords Json?
+  missingKeywords Json?
+  createdAt       DateTime @default(now())
+  Resume          Resume?  @relation(fields: [resumeId], references: [id])
+  User            User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([resumeId])
+  @@index([userId])
+}
+
+model Language {
+  id          String   @id
+  resumeId    String
+  name        String
+  proficiency String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  Resume      Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+
+  @@index([resumeId])
+}
+
+model Resume {
+  id            String          @id
+  userId        String?
+  title         String          @default("Untitled Resume")
+  data          Json
+  template      String          @default("merit")
+  pageCount     Int             @default(1)
+  accent        String?         @default("#18634B")
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime
+  email         String?
+  fontFamily    String?
+  fontSize      String?
+  fullName      String?
+  isPublic      Boolean         @default(false)
+  jobTitle      String?
+  lineSpacing   String?
+  linkedin      String?
+  location      String?
+  phone         String?
+  photoStyle    String?
+  photoUrl      String?
+  shareSlug     String?         @unique
+  summary       String?
+  website       String?
+  AtsScan       AtsScan[]
+  Certification Certification[]
+  CoverLetter   CoverLetter[]
+  Education     Education[]
+  Experience    Experience[]
+  ExportLog     ExportLog[]
+  JobTarget     JobTarget[]
+  Language      Language[]
+  Project       Project[]
+  User          User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Skill         Skill[]
+  Volunteer     Volunteer[]
+
+  @@index([shareSlug])
+  @@index([userId])
+}
+
+model User {
+  id               String        @id
+  email            String        @unique
+  name             String?
+  passwordHash     String?
+  plan             String        @default("free")
+  proSince         DateTime?
+  downloadsUsed    Int           @default(0)
+  credits          Int           @default(25)
+  streakDays       Int           @default(1)
+  lastClaimDate    String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime
+  freeExportsBonus Int           @default(0)
+  metadata         Json?
+  role             String        @default("user")
+  AtsScan          AtsScan[]
+  CoverLetter      CoverLetter[]
+  CreditLog        CreditLog[]
+  ExportLog        ExportLog[]
+  JobTarget        JobTarget[]
+  Resume           Resume[]
+  UserSetting      UserSetting?
+
+  @@index([email])
+}
+
+model UserSetting {
+  id                 String   @id
+  userId             String   @unique
+  theme              String   @default("system")
+  autoSave           Boolean  @default(true)
+  emailNotifications Boolean  @default(true)
+  preferredTemplate  String   @default("merit")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime
+  User               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Volunteer {
+  id        String   @id
+  resumeId  String
+  role      String
+  org       String
+  year      String?
+  bullets   Json?    @default("[]")
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  Resume    Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+
+  @@index([resumeId])
+}
+
+// ==========================================
+// SPARTAN IMPAX PORTFOLIO MODELS
+// ==========================================
+
+model ContactMessage {
+  id        String   @id @default(uuid())
+  name      String
+  email     String
+  subject   String
+  message   String
+  status    String   @default("UNREAD") // UNREAD, READ, REPLIED, ARCHIVED
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model PortfolioProject {
+  id               String   @id @default(uuid())
+  slug             String   @unique
+  title            String
+  category         String
+  shortDescription String
+  overview         String
+  client           String?
+  duration         String?
+  role             String?
+  liveUrl          String?
+  githubUrl        String?
+  thumbnail        String
+  tags             String[]
+  features         String[]
+  featured         Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([category])
+  @@index([featured])
+}
+
+model PortfolioSkill {
+  id              String   @id @default(uuid())
+  category        String
+  name            String
+  level           Int      @default(85)
+  experienceYears String?
+  icon            String?
+  createdAt       DateTime @default(now())
+
+  @@index([category])
+}
+
+model PortfolioService {
+  id               String   @id @default(uuid())
+  title            String
+  icon             String
+  shortDescription String
+  deliverables     String[]
+  tags             String[]
+  createdAt        DateTime @default(now())
+}
+
+model PortfolioArticle {
+  id            String   @id @default(uuid())
+  slug          String   @unique
+  title         String
+  category      String
+  excerpt       String
+  readTime      String
+  publishedDate String
+  tags          String[]
+  content       String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([category])
+}
+
+model AdminUser {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         String   @default("ADMIN")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model PricingPlan {
+  id            String   @id @default(uuid())
+  name          String
+  slug          String   @unique
+  price         Int      // INR amount (e.g. 14999)
+  originalPrice Int?     // e.g. 24999 for strike-through
+  badge         String?
+  description   String
+  features      String[]
+  deliverables  String[]
+  popular       Boolean  @default(false)
+  active        Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([active])
+}
+
+model PaymentTransaction {
+  id            String   @id @default(uuid())
+  orderId       String   @unique
+  paymentId     String?
+  signature     String?
+  planSlug      String?
+  planName      String
+  amount        Int      // in INR
+  currency      String   @default("INR")
+  customerName  String
+  customerEmail String
+  customerPhone String?
+  status        String   @default("PENDING") // PENDING, PAID, FAILED
+  receipt       String?
+  paymentMethod String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([status])
+  @@index([customerEmail])
+  @@index([createdAt])
+}
+
+model VisitorLog {
+  id        String   @id @default(uuid())
+  path      String
+  ip        String?
+  userAgent String?
+  referrer  String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
