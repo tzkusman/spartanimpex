@@ -24,7 +24,7 @@ export default async function handler(req, res) {
     const orderId = body.razorpay_order_id || body.orderId;
     const paymentId = body.razorpay_payment_id || body.paymentId;
     const signature = body.razorpay_signature || body.signature;
-    const { planSlug, customer, paymentMethod } = body;
+    const { planSlug, customer, paymentMethod, currency, amount } = body;
 
     if (!orderId || !paymentId || !signature) {
       return res.status(400).json({ error: 'Order ID, Payment ID, and Cryptographic Signature are required.' });
@@ -60,8 +60,11 @@ export default async function handler(req, res) {
               where: { orderId },
               data: {
                 paymentId,
+                signature,
                 status: 'PAID',
                 paymentMethod: paymentMethod || 'Razorpay Verified',
+                ...(currency && { currency }),
+                ...(amount && { amount: Math.round(Number(amount)) }),
               },
             });
           }
@@ -74,11 +77,13 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success: true,
       verified: true,
-      message: 'Payment cryptographically verified and recorded.',
+      message: 'Payment cryptographically verified and recorded in Spartan Impax financial registry.',
       orderId,
       paymentId,
       customer,
       planSlug,
+      currency,
+      amount,
     });
   } catch (error) {
     console.error('Payment verification error:', error);

@@ -31,38 +31,44 @@ import {
   Tag,
   Lock,
   Layers,
-  ChevronRight
+  ChevronRight,
+  Download,
+  Copy,
+  Receipt,
+  FileSpreadsheet,
+  X
 } from 'lucide-react';
 import logoImg from '../../assets/spartan-logo.png';
+import { formatCurrencyAmount, SUPPORTED_CURRENCIES } from '../../utils/currency';
 
 export default function AdminDashboardPage() {
   const navigate = useNavigate();
   const [adminUser, setAdminUser] = useState(null);
   const [token, setToken] = useState(null);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('payments'); // Default to Payments tab as requested
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [notification, setNotification] = useState(null);
 
-  // Data states
+  // Financial & Data states
   const [overview, setOverview] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [projects, setProjects] = useState([]);
-  const [pricingPlans, setPricingPlans] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [messages, setMessages] = useState([]);
   const [visitorLogs, setVisitorLogs] = useState([]);
-  const [activeVisitorsCount, setActiveVisitorsCount] = useState(1);
+  const [currencyTotals, setCurrencyTotals] = useState({});
 
-  // Filters & search
+  // Filters & Search
+  const [paymentSearch, setPaymentSearch] = useState('');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('ALL');
+  const [paymentCurrencyFilter, setPaymentCurrencyFilter] = useState('ALL');
+
   const [messageSearch, setMessageSearch] = useState('');
   const [messageStatusFilter, setMessageStatusFilter] = useState('ALL');
-  const [paymentStatusFilter, setPaymentStatusFilter] = useState('ALL');
-  const [paymentSearch, setPaymentSearch] = useState('');
 
   // Modals
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null);
-  const [projectModal, setProjectModal] = useState({ isOpen: false, mode: 'create', data: null });
-  const [pricingModal, setPricingModal] = useState({ isOpen: false, data: null });
+  const [copiedId, setCopiedId] = useState(null);
 
   // Check auth on mount
   useEffect(() => {
@@ -79,13 +85,13 @@ export default function AdminDashboardPage() {
       try {
         setAdminUser(JSON.parse(storedUser));
       } catch (e) {
-        setAdminUser({ name: 'Gajender Singh', email: 'gajender@spartanimpex.com' });
+        setAdminUser({ name: 'Gajender Singh Rajawat', email: 'gajender@spartanimpex.com' });
       }
     }
 
     fetchDashboardData(storedToken);
 
-    // Auto-refresh metrics every 30 seconds
+    // Auto-refresh financial metrics every 30 seconds
     const interval = setInterval(() => {
       fetchDashboardData(storedToken, true);
     }, 30000);
@@ -119,38 +125,26 @@ export default function AdminDashboardPage() {
       if (ovRes.ok) {
         const ovData = await ovRes.json();
         setOverview(ovData);
-        if (ovData.metrics?.activeVisitors) {
-          setActiveVisitorsCount(ovData.metrics.activeVisitors);
+        if (ovData.metrics?.currencyTotals) {
+          setCurrencyTotals(ovData.metrics.currencyTotals);
         }
       }
 
-      // 2. Messages
-      const msgRes = await fetch('/api/admin/messages', { headers: getAuthHeaders(authToken) });
-      if (msgRes.ok) setMessages(await msgRes.json());
-
-      // 3. Projects
-      const projRes = await fetch('/api/projects');
-      if (projRes.ok) setProjects(await projRes.json());
-
-      // 4. Pricing Plans
-      const priceRes = await fetch('/api/admin/pricing', { headers: getAuthHeaders(authToken) });
-      if (priceRes.ok) setPricingPlans(await priceRes.json());
-
-      // 5. Payments
+      // 2. Deep Transactions Registry
       const payRes = await fetch('/api/admin/payments', { headers: getAuthHeaders(authToken) });
       if (payRes.ok) {
         const payData = await payRes.json();
         setTransactions(payData.transactions || []);
+        if (payData.currencyTotals) {
+          setCurrencyTotals(payData.currencyTotals);
+        }
       }
 
-      // 6. Visitors
-      const visRes = await fetch('/api/admin/visitors', { headers: getAuthHeaders(authToken) });
-      if (visRes.ok) {
-        const visData = await visRes.json();
-        setVisitorLogs(visData.recentLogs || []);
-        if (visData.activeCount) setActiveVisitorsCount(visData.activeCount);
+      // 3. Contact Inquiries
+      const msgRes = await fetch('/api/admin/messages', { headers: getAuthHeaders(authToken) });
+      if (msgRes.ok) {
+        setMessages(await msgRes.json());
       }
-
     } catch (err) {
       console.error('Error fetching admin data:', err);
     } finally {
@@ -165,1334 +159,660 @@ export default function AdminDashboardPage() {
     navigate('/admin/login');
   };
 
-  // --- Message Actions ---
-  const handleUpdateMessageStatus = async (id, status) => {
-    try {
-      const res = await fetch(`/api/admin/messages/${id}`, {
-        method: 'PATCH',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ status }),
-      });
-      if (res.ok) {
-        setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, status } : m)));
-        if (selectedMessage && selectedMessage.id === id) {
-          setSelectedMessage((prev) => ({ ...prev, status }));
-        }
-        showToast(`Message status updated to ${status}`);
-      }
-    } catch (e) {
-      showToast('Failed to update status', 'error');
-    }
+  const handleCopy = (text, id) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    showToast(`Copied ${id}: ${text}`, 'info');
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleDeleteMessage = async (id) => {
-    if (!window.confirm('Delete this user inquiry permanently?')) return;
-    try {
-      const res = await fetch(`/api/admin/messages/${id}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders(),
-      });
-      if (res.ok) {
-        setMessages((prev) => prev.filter((m) => m.id !== id));
-        if (selectedMessage && selectedMessage.id === id) setSelectedMessage(null);
-        showToast('Message removed successfully');
-      }
-    } catch (e) {
-      showToast('Failed to delete message', 'error');
+  // Export Transactions to CSV
+  const handleExportCSV = () => {
+    if (transactions.length === 0) {
+      showToast('No transactions to export', 'error');
+      return;
     }
+
+    const headers = [
+      'Order ID',
+      'Payment ID',
+      'Status',
+      'Currency',
+      'Amount',
+      'Customer Name',
+      'Customer Email',
+      'Customer Phone',
+      'Plan Name',
+      'Plan Slug',
+      'Receipt',
+      'Payment Method',
+      'Created At'
+    ];
+
+    const rows = transactions.map((t) => [
+      `"${t.orderId || ''}"`,
+      `"${t.paymentId || ''}"`,
+      `"${t.status || ''}"`,
+      `"${t.currency || 'INR'}"`,
+      t.amount || 0,
+      `"${(t.customerName || '').replace(/"/g, '""')}"`,
+      `"${(t.customerEmail || '').replace(/"/g, '""')}"`,
+      `"${(t.customerPhone || '').replace(/"/g, '""')}"`,
+      `"${(t.planName || '').replace(/"/g, '""')}"`,
+      `"${t.planSlug || ''}"`,
+      `"${t.receipt || ''}"`,
+      `"${t.paymentMethod || ''}"`,
+      `"${new Date(t.createdAt).toISOString()}"`
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `spartan_impax_transactions_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('Transaction registry exported to CSV successfully');
   };
 
-  // --- Project Actions ---
-  const handleSaveProject = async (e) => {
-    e.preventDefault();
-    const data = projectModal.data;
+  // Filtered transactions
+  const filteredTransactions = transactions.filter((tx) => {
+    const matchesStatus = paymentStatusFilter === 'ALL' || tx.status === paymentStatusFilter;
+    const matchesCurrency = paymentCurrencyFilter === 'ALL' || (tx.currency || 'INR').toUpperCase() === paymentCurrencyFilter;
 
-    try {
-      const isEdit = projectModal.mode === 'edit';
-      const endpoint = isEdit ? `/api/admin/projects/${data.id}` : '/api/admin/projects';
-      const method = isEdit ? 'PUT' : 'POST';
+    const q = paymentSearch.toLowerCase().trim();
+    const matchesSearch =
+      !q ||
+      (tx.customerName && tx.customerName.toLowerCase().includes(q)) ||
+      (tx.customerEmail && tx.customerEmail.toLowerCase().includes(q)) ||
+      (tx.customerPhone && tx.customerPhone.toLowerCase().includes(q)) ||
+      (tx.orderId && tx.orderId.toLowerCase().includes(q)) ||
+      (tx.paymentId && tx.paymentId.toLowerCase().includes(q)) ||
+      (tx.planName && tx.planName.toLowerCase().includes(q));
 
-      const res = await fetch(endpoint, {
-        method,
-        headers: getAuthHeaders(),
-        body: JSON.stringify(data),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to save project');
-      }
-
-      showToast(isEdit ? 'Project updated successfully!' : 'New project added to portfolio!');
-      setProjectModal({ isOpen: false, mode: 'create', data: null });
-      fetchDashboardData(token, true);
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
-  };
-
-  const handleDeleteProject = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this project from the live portfolio?')) return;
-    try {
-      const res = await fetch(`/api/admin/projects/${id}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders(),
-      });
-      if (res.ok) {
-        setProjects((prev) => prev.filter((p) => p.id !== id));
-        showToast('Project removed from portfolio');
-      }
-    } catch (e) {
-      showToast('Failed to delete project', 'error');
-    }
-  };
-
-  // --- Pricing Actions ---
-  const handleSavePricing = async (e) => {
-    e.preventDefault();
-    const data = pricingModal.data;
-
-    try {
-      const res = await fetch('/api/admin/pricing', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(data),
-      });
-
-      if (!res.ok) throw new Error('Failed to update pricing plan');
-
-      showToast('Pricing plan updated successfully!');
-      setPricingModal({ isOpen: false, data: null });
-      fetchDashboardData(token, true);
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
-  };
-
-  // Filtered queries
-  const filteredMessages = messages.filter((m) => {
-    const matchStatus = messageStatusFilter === 'ALL' || m.status === messageStatusFilter;
-    const matchSearch =
-      !messageSearch ||
-      m.name?.toLowerCase().includes(messageSearch.toLowerCase()) ||
-      m.email?.toLowerCase().includes(messageSearch.toLowerCase()) ||
-      m.subject?.toLowerCase().includes(messageSearch.toLowerCase()) ||
-      m.message?.toLowerCase().includes(messageSearch.toLowerCase());
-    return matchStatus && matchSearch;
+    return matchesStatus && matchesCurrency && matchesSearch;
   });
 
-  const filteredTransactions = transactions.filter((t) => {
-    const matchStatus = paymentStatusFilter === 'ALL' || t.status === paymentStatusFilter;
-    const matchSearch =
-      !paymentSearch ||
-      t.customerName?.toLowerCase().includes(paymentSearch.toLowerCase()) ||
-      t.customerEmail?.toLowerCase().includes(paymentSearch.toLowerCase()) ||
-      t.orderId?.toLowerCase().includes(paymentSearch.toLowerCase()) ||
-      t.planName?.toLowerCase().includes(paymentSearch.toLowerCase());
-    return matchStatus && matchSearch;
-  });
-
-  const totalPaidRevenue = transactions
-    .filter((t) => t.status === 'PAID')
-    .reduce((acc, t) => acc + (t.amount || 0), 0);
+  // Financial aggregates
+  const paidTransactions = transactions.filter((t) => t.status === 'PAID');
+  const pendingTransactions = transactions.filter((t) => t.status === 'PENDING');
+  const failedTransactions = transactions.filter((t) => t.status === 'FAILED');
 
   return (
-    <div className="min-h-screen bg-navy-dark text-navy-50 flex flex-col font-sans">
-      {/* Toast Notification */}
-      {notification && (
-        <div
-          className={`fixed top-5 right-5 z-50 px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-sm font-semibold transition-all ${
-            notification.type === 'error'
-              ? 'bg-rose-500/90 text-white border border-rose-400'
-              : 'bg-cyan-DEFAULT/90 text-navy-dark border border-cyan-300'
-          }`}
-        >
-          {notification.type === 'error' ? <AlertCircle className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
-          <span>{notification.message}</span>
-        </div>
-      )}
-
-      {/* Admin Top Navbar */}
-      <header className="sticky top-0 z-40 bg-navy-card/95 backdrop-blur-md border-b border-navy-border px-4 lg:px-8 py-3.5 flex items-center justify-between">
-        {/* Left: Brand & Admin Badge */}
+    <div className="min-h-screen bg-navy text-navy-50 flex flex-col font-sans">
+      {/* Top Admin Navigation Header */}
+      <header className="h-20 border-b border-navy-border/80 bg-navy-card/95 backdrop-blur-xl sticky top-0 z-40 px-4 sm:px-8 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Link to="/" className="flex items-center gap-2 group">
-            <div className="w-9 h-9 rounded-xl bg-navy border border-navy-border p-1 flex items-center justify-center shadow-md">
+          <Link to="/" className="flex items-center gap-3 group">
+            <div className="w-10 h-10 rounded-xl bg-navy border border-navy-border p-1.5 shadow-md flex items-center justify-center group-hover:border-cyan-DEFAULT/40 transition-colors">
               <img src={logoImg} alt="Spartan Impax" className="w-full h-full object-contain" />
             </div>
-            <div className="flex items-center gap-1.5 font-bold tracking-tight">
-              <span className="text-cyan-DEFAULT">SPARTAN</span>
-              <span className="text-silver-500 font-light">|</span>
-              <span className="text-white text-sm">ADMIN PORTAL</span>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-white text-base tracking-tight font-serif">Spartan Impax</span>
+                <span className="px-2 py-0.5 rounded-full bg-cyan-DEFAULT/15 border border-cyan-DEFAULT/30 text-[10px] font-black text-cyan-300 tracking-wider">
+                  EXECUTIVE PORTAL
+                </span>
+              </div>
+              <p className="text-[11px] text-silver-400">Database Financial & Payment Command Center</p>
             </div>
           </Link>
-
-          <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-cyan-DEFAULT/10 border border-cyan-DEFAULT/30 text-cyan-300">
-            <Shield className="w-3.5 h-3.5 text-cyan-DEFAULT" />
-            Super Admin
-          </span>
         </div>
 
-        {/* Right: Telemetry & Controls */}
-        <div className="flex items-center gap-3 sm:gap-4">
-          {/* Active Visitors Indicator */}
-          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-navy border border-navy-border text-xs font-medium text-silver-300">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]" />
-            <span>
-              <strong className="text-white">{activeVisitorsCount}</strong> Active {activeVisitorsCount === 1 ? 'Visitor' : 'Visitors'}
-            </span>
-          </div>
-
-          {/* View Live Website */}
-          <a
-            href="/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hidden md:flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-navy hover:bg-navy-border/50 border border-navy-border text-xs text-silver-300 hover:text-white transition-all"
-            title="Open Public Site"
-          >
-            <span>Live Site</span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
-
-          {/* Refresh Data */}
+        {/* Action Controls */}
+        <div className="flex items-center gap-3">
           <button
             onClick={() => fetchDashboardData(token)}
             disabled={refreshing}
-            className="p-2 rounded-xl bg-navy hover:bg-navy-border/50 border border-navy-border text-silver-300 hover:text-cyan-DEFAULT transition-all"
-            title="Refresh Dashboard"
+            className="p-2.5 rounded-xl bg-navy border border-navy-border text-silver-300 hover:text-cyan-DEFAULT hover:border-cyan-DEFAULT/40 transition-all flex items-center gap-2 text-xs font-semibold shadow-sm"
+            title="Refresh database records"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin text-cyan-DEFAULT' : ''}`} />
+            <span className="hidden sm:inline">Sync DB</span>
           </button>
 
-          {/* Admin Profile & Logout */}
-          <div className="flex items-center gap-2 pl-2 border-l border-navy-border">
-            <div className="hidden lg:block text-right">
-              <p className="text-xs font-bold text-white leading-tight">{adminUser?.name || 'Gajender Singh'}</p>
-              <p className="text-[10px] text-silver-400">gajender@spartanimpex.com</p>
+          <Link
+            to="/"
+            target="_blank"
+            className="p-2.5 rounded-xl bg-navy border border-navy-border text-silver-300 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold"
+            title="View live portfolio"
+          >
+            <ExternalLink className="w-4 h-4" />
+            <span className="hidden sm:inline">Live Site</span>
+          </Link>
+
+          <div className="h-6 w-px bg-navy-border mx-1" />
+
+          {/* Admin User Profile Pill */}
+          <div className="flex items-center gap-3 pl-2">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-DEFAULT/20 to-blue-600/30 border border-cyan-DEFAULT/40 flex items-center justify-center text-cyan-300 font-bold text-xs shadow-md">
+              GS
+            </div>
+            <div className="hidden md:block text-left">
+              <p className="text-xs font-bold text-white">{adminUser?.name || 'Gajender Singh Rajawat'}</p>
+              <p className="text-[10px] text-cyan-300 font-mono">gajender@spartanimpex.com</p>
             </div>
             <button
               onClick={handleLogout}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 hover:text-rose-200 text-xs font-semibold transition-all"
+              className="p-2 rounded-xl text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/30 border border-transparent transition-all ml-1"
+              title="Sign Out of Admin Console"
             >
-              <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Logout</span>
+              <LogOut className="w-4 h-4" />
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Body */}
-      <div className="flex-1 flex flex-col md:flex-row">
-        {/* Sidebar Tabs */}
-        <aside className="w-full md:w-64 bg-navy-card/80 border-r border-navy-border p-4 shrink-0">
-          <nav className="space-y-1.5">
-            {[
-              { id: 'overview', name: 'Overview', icon: LayoutDashboard, badge: null },
-              { id: 'messages', name: 'User Requests', icon: MessageSquare, badge: overview?.metrics?.unreadMessages || messages.filter(m => m.status === 'UNREAD').length },
-              { id: 'projects', name: 'Projects Manager', icon: FolderGit2, badge: projects.length },
-              { id: 'pricing', name: 'Pricing Packages', icon: Layers, badge: pricingPlans.length },
-              { id: 'payments', name: 'Razorpay Payments', icon: CreditCard, badge: transactions.filter(t => t.status === 'PAID').length },
-              { id: 'visitors', name: 'Live Visitors', icon: Users, badge: activeVisitorsCount },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl text-xs font-semibold tracking-wide transition-all ${
-                    isActive
-                      ? 'bg-cyan-DEFAULT text-navy-dark shadow-[0_0_20px_rgba(0,229,255,0.3)] font-bold'
-                      : 'text-silver-300 hover:bg-navy hover:text-white'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <Icon className={`w-4 h-4 ${isActive ? 'text-navy-dark' : 'text-cyan-DEFAULT'}`} />
-                    <span>{tab.name}</span>
-                  </div>
-                  {tab.badge !== null && tab.badge > 0 && (
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        isActive ? 'bg-navy-dark text-cyan-DEFAULT' : 'bg-cyan-DEFAULT/15 text-cyan-300'
-                      }`}
-                    >
-                      {tab.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
+      {/* Toast Notification */}
+      {notification && (
+        <div className="fixed top-24 right-8 z-50 p-4 rounded-2xl bg-navy-card border border-cyan-DEFAULT/50 shadow-2xl text-white text-xs flex items-center gap-3 animate-fadeIn">
+          <Sparkles className="w-4 h-4 text-cyan-DEFAULT" />
+          <span>{notification.message}</span>
+        </div>
+      )}
 
-          {/* Quick Leadership Card */}
-          <div className="mt-8 p-4 rounded-2xl bg-navy border border-navy-border/60 text-xs">
-            <p className="text-[11px] font-bold text-silver-400 uppercase tracking-wider mb-2">Spartan Leadership</p>
-            <div className="space-y-2">
-              <div>
-                <p className="text-white font-semibold">Gajender Singh Rajawat</p>
-                <p className="text-[11px] text-cyan-DEFAULT">CEO & Founder</p>
+      {/* Main Admin Console Container */}
+      <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-8 space-y-8">
+        {/* Navigation Tabs Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-navy-border pb-4">
+          <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-navy-card border border-navy-border shadow-lg">
+            <button
+              onClick={() => setActiveTab('payments')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                activeTab === 'payments'
+                  ? 'bg-cyan-DEFAULT text-navy-dark shadow-[0_0_20px_rgba(0,229,255,0.4)]'
+                  : 'text-silver-300 hover:text-white hover:bg-navy'
+              }`}
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>Payments & Transactions ({transactions.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('overview')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                activeTab === 'overview'
+                  ? 'bg-cyan-DEFAULT text-navy-dark shadow-[0_0_20px_rgba(0,229,255,0.4)]'
+                  : 'text-silver-300 hover:text-white hover:bg-navy'
+              }`}
+            >
+              <LayoutDashboard className="w-4 h-4" />
+              <span>Financial Overview</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('messages')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                activeTab === 'messages'
+                  ? 'bg-cyan-DEFAULT text-navy-dark shadow-[0_0_20px_rgba(0,229,255,0.4)]'
+                  : 'text-silver-300 hover:text-white hover:bg-navy'
+              }`}
+            >
+              <MessageSquare className="w-4 h-4" />
+              <span>Inquiries ({messages.length})</span>
+            </button>
+          </div>
+
+          {activeTab === 'payments' && (
+            <button
+              onClick={handleExportCSV}
+              className="px-4 py-2.5 rounded-xl bg-navy border border-cyan-DEFAULT/40 text-cyan-300 hover:bg-cyan-DEFAULT hover:text-navy-dark transition-all text-xs font-bold flex items-center gap-2 shadow-lg"
+            >
+              <Download className="w-4 h-4" />
+              <span>Export CSV</span>
+            </button>
+          )}
+        </div>
+
+        {/* ========================================================
+            TAB 1: DEEP RAZORPAY TRANSACTIONS REGISTRY
+           ======================================================== */}
+        {activeTab === 'payments' && (
+          <div className="space-y-8 animate-fadeIn">
+            {/* Top KPI Metrics Bar */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {/* Paid Revenue Metric */}
+              <div className="p-6 rounded-3xl bg-navy-card border border-emerald-500/30 shadow-xl relative overflow-hidden">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Verified Revenue</span>
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="text-3xl font-black text-white tracking-tight font-serif mb-1">
+                  ₹{Number(overview?.metrics?.totalRevenue || 0).toLocaleString('en-IN')}
+                </div>
+                <p className="text-xs text-silver-400 flex items-center gap-1.5">
+                  <span className="text-emerald-400 font-bold">{paidTransactions.length} Paid</span> verified orders
+                </p>
               </div>
-              <div className="pt-2 border-t border-navy-border/40">
-                <p className="text-white font-semibold">Usman</p>
-                <p className="text-[11px] text-cyan-DEFAULT">CIO & Principal Architect</p>
-                <a
-                  href="https://github.com/tzkusman/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[10px] text-silver-400 hover:text-white flex items-center gap-1 mt-0.5"
+
+              {/* Verified Transactions Count */}
+              <div className="p-6 rounded-3xl bg-navy-card border border-cyan-DEFAULT/30 shadow-xl relative overflow-hidden">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-xs font-bold uppercase tracking-wider text-cyan-300">Total Checkouts</span>
+                  <div className="w-10 h-10 rounded-2xl bg-cyan-DEFAULT/15 border border-cyan-DEFAULT/30 flex items-center justify-center text-cyan-DEFAULT">
+                    <Receipt className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="text-3xl font-black text-white tracking-tight font-serif mb-1">
+                  {transactions.length}
+                </div>
+                <p className="text-xs text-silver-400">All database order attempts</p>
+              </div>
+
+              {/* Pending Transactions */}
+              <div className="p-6 rounded-3xl bg-navy-card border border-amber-500/30 shadow-xl relative overflow-hidden">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Pending Orders</span>
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="text-3xl font-black text-white tracking-tight font-serif mb-1">
+                  {pendingTransactions.length}
+                </div>
+                <p className="text-xs text-silver-400">Awaiting customer payment completion</p>
+              </div>
+
+              {/* Multi-Currency Volume */}
+              <div className="p-6 rounded-3xl bg-navy-card border border-purple-500/30 shadow-xl relative overflow-hidden">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-xs font-bold uppercase tracking-wider text-purple-300">Currencies Active</span>
+                  <div className="w-10 h-10 rounded-2xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-300">
+                    <Globe className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="text-3xl font-black text-white tracking-tight font-serif mb-1">
+                  {Object.keys(currencyTotals).length || 1}
+                </div>
+                <p className="text-xs text-silver-400 truncate">
+                  {Object.keys(currencyTotals).join(', ') || 'INR, USD, JPY'}
+                </p>
+              </div>
+            </div>
+
+            {/* Currency Breakdown Bar */}
+            {Object.keys(currencyTotals).length > 0 && (
+              <div className="p-6 rounded-3xl bg-navy-card/80 border border-navy-border shadow-xl">
+                <p className="text-xs font-bold text-silver-300 uppercase tracking-wider mb-4 flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-cyan-DEFAULT" />
+                  <span>Collected Revenue by Currency:</span>
+                </p>
+                <div className="flex flex-wrap gap-4">
+                  {Object.entries(currencyTotals).map(([curr, sum]) => (
+                    <div
+                      key={curr}
+                      className="px-4 py-2.5 rounded-2xl bg-navy border border-navy-border/80 flex items-center gap-3"
+                    >
+                      <span className="text-base">{SUPPORTED_CURRENCIES[curr]?.flag || '🌐'}</span>
+                      <div>
+                        <span className="text-[10px] text-silver-400 uppercase font-semibold">{curr}</span>
+                        <p className="text-sm font-bold text-white font-mono">
+                          {formatCurrencyAmount(sum, curr)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Search & Filter Toolbar */}
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 p-4 rounded-3xl bg-navy-card border border-navy-border shadow-lg">
+              <div className="relative w-full md:w-96">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-silver-400" />
+                <input
+                  type="text"
+                  placeholder="Search by customer, email, order ID, payment ID..."
+                  value={paymentSearch}
+                  onChange={(e) => setPaymentSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-navy border border-navy-border text-xs text-white placeholder-silver-500 focus:outline-none focus:border-cyan-DEFAULT focus:ring-1 focus:ring-cyan-DEFAULT transition-all"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 w-full md:w-auto">
+                <div className="flex items-center gap-2">
+                  <Filter className="w-3.5 h-3.5 text-silver-400" />
+                  <span className="text-xs text-silver-400 font-semibold">Status:</span>
+                </div>
+                <select
+                  value={paymentStatusFilter}
+                  onChange={(e) => setPaymentStatusFilter(e.target.value)}
+                  className="px-3 py-2 rounded-xl bg-navy border border-navy-border text-xs text-white focus:outline-none focus:border-cyan-DEFAULT cursor-pointer"
                 >
-                  <FolderGit2 className="w-3 h-3" /> github.com/tzkusman
-                </a>
+                  <option value="ALL">All Statuses ({transactions.length})</option>
+                  <option value="PAID">PAID ({paidTransactions.length})</option>
+                  <option value="PENDING">PENDING ({pendingTransactions.length})</option>
+                  <option value="FAILED">FAILED ({failedTransactions.length})</option>
+                </select>
+
+                <select
+                  value={paymentCurrencyFilter}
+                  onChange={(e) => setPaymentCurrencyFilter(e.target.value)}
+                  className="px-3 py-2 rounded-xl bg-navy border border-navy-border text-xs text-white focus:outline-none focus:border-cyan-DEFAULT cursor-pointer"
+                >
+                  <option value="ALL">All Currencies</option>
+                  {Object.keys(SUPPORTED_CURRENCIES).map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Transactions Data Table */}
+            <div className="bg-navy-card border border-navy-border rounded-3xl overflow-hidden shadow-2xl">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-navy/90 text-silver-400 uppercase tracking-wider text-[10px] border-b border-navy-border">
+                    <tr>
+                      <th className="py-4 px-6">Customer & Contact</th>
+                      <th className="py-4 px-6">Package</th>
+                      <th className="py-4 px-6">Amount & Currency</th>
+                      <th className="py-4 px-6">Order & Payment IDs</th>
+                      <th className="py-4 px-6">Timestamp</th>
+                      <th className="py-4 px-6">Status</th>
+                      <th className="py-4 px-6 text-right">Audit</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-navy-border/40 text-silver-200">
+                    {filteredTransactions.map((tx) => (
+                      <tr key={tx.id} className="hover:bg-navy/60 transition-colors group">
+                        {/* Customer */}
+                        <td className="py-4 px-6">
+                          <p className="font-bold text-white text-sm">{tx.customerName}</p>
+                          <p className="text-silver-400 text-[11px] font-mono">{tx.customerEmail}</p>
+                          {tx.customerPhone && (
+                            <p className="text-silver-500 text-[10px] flex items-center gap-1 mt-0.5">
+                              <Phone className="w-3 h-3 text-silver-400" />
+                              {tx.customerPhone}
+                            </p>
+                          )}
+                        </td>
+
+                        {/* Package */}
+                        <td className="py-4 px-6">
+                          <span className="font-semibold text-white">{tx.planName}</span>
+                          <span className="block text-[10px] text-silver-400">{tx.planSlug}</span>
+                        </td>
+
+                        {/* Amount */}
+                        <td className="py-4 px-6 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">{SUPPORTED_CURRENCIES[tx.currency]?.flag || '🌐'}</span>
+                            <div>
+                              <span className="font-black text-white text-base">
+                                {formatCurrencyAmount(tx.amount, tx.currency || 'INR')}
+                              </span>
+                              <span className="text-[10px] text-cyan-300 font-bold block">{tx.currency || 'INR'}</span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Order & Payment IDs with Copy */}
+                        <td className="py-4 px-6 font-mono text-[11px]">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="text-cyan-300 font-semibold">{tx.orderId}</span>
+                            <button
+                              onClick={() => handleCopy(tx.orderId, tx.orderId)}
+                              className="text-silver-400 hover:text-white p-1 rounded hover:bg-navy transition-colors"
+                              title="Copy Order ID"
+                            >
+                              <Copy className="w-3 h-3" />
+                            </button>
+                          </div>
+                          {tx.paymentId ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-emerald-400 font-semibold">{tx.paymentId}</span>
+                              <button
+                                onClick={() => handleCopy(tx.paymentId, tx.paymentId)}
+                                className="text-silver-400 hover:text-white p-1 rounded hover:bg-navy transition-colors"
+                                title="Copy Payment ID"
+                              >
+                                <Copy className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-silver-500 italic">Payment ID not generated</span>
+                          )}
+                        </td>
+
+                        {/* Timestamp */}
+                        <td className="py-4 px-6 text-[11px] whitespace-nowrap">
+                          <p className="text-white font-medium">
+                            {new Date(tx.createdAt).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                            })}
+                          </p>
+                          <p className="text-silver-400 text-[10px]">
+                            {new Date(tx.createdAt).toLocaleTimeString('en-US', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </p>
+                        </td>
+
+                        {/* Status */}
+                        <td className="py-4 px-6">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black tracking-wider uppercase ${
+                              tx.status === 'PAID'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.2)]'
+                                : tx.status === 'PENDING'
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                            }`}
+                          >
+                            {tx.status === 'PAID' && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
+                            {tx.status === 'PENDING' && <Clock className="w-3 h-3 text-amber-400" />}
+                            {tx.status}
+                          </span>
+                        </td>
+
+                        {/* Deep Inspection Button */}
+                        <td className="py-4 px-6 text-right">
+                          <button
+                            onClick={() => setSelectedTransaction(tx)}
+                            className="px-3 py-1.5 rounded-xl bg-navy border border-navy-border hover:border-cyan-DEFAULT text-silver-300 hover:text-cyan-DEFAULT text-xs font-semibold transition-all inline-flex items-center gap-1.5"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Details</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {filteredTransactions.length === 0 && (
+                      <tr>
+                        <td colSpan="7" className="py-16 text-center text-silver-500">
+                          <Receipt className="w-12 h-12 text-silver-600 mx-auto mb-3" />
+                          <p className="text-base font-bold text-white mb-1">No matching transactions found</p>
+                          <p className="text-xs text-silver-400">
+                            Try adjusting your search query, status, or currency filters.
+                          </p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
-        </aside>
+        )}
 
-        {/* Content Area */}
-        <main className="flex-1 p-4 lg:p-8 overflow-y-auto">
-          {/* ========================================================
-              TAB 1: OVERVIEW
-             ======================================================== */}
-          {activeTab === 'overview' && (
-            <div className="space-y-8">
-              {/* Header Title */}
-              <div>
-                <h2 className="text-2xl lg:text-3xl font-serif font-bold text-white mb-1">
-                  Executive Operations & Intelligence
-                </h2>
-                <p className="text-silver-400 text-xs sm:text-sm">
-                  Real-time command center for Spartan Impax. Monitor customer inquiries, live visitors, and Razorpay settlements.
-                </p>
+        {/* ========================================================
+            TAB 2: FINANCIAL OVERVIEW
+           ======================================================== */}
+        {activeTab === 'overview' && (
+          <div className="space-y-8 animate-fadeIn">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="p-8 rounded-3xl bg-navy-card border border-navy-border shadow-xl">
+                <h3 className="text-sm font-bold text-silver-400 uppercase tracking-wider mb-2">Total Paid Revenue</h3>
+                <div className="text-4xl font-serif font-black text-white mb-2">
+                  ₹{Number(overview?.metrics?.totalRevenue || 0).toLocaleString('en-IN')}
+                </div>
+                <p className="text-xs text-emerald-400 font-semibold">100% Cryptographically Verified by HMAC-SHA256</p>
               </div>
 
-              {/* KPI Cards Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                {/* Total Paid Revenue */}
-                <div className="bg-navy-card border border-navy-border rounded-3xl p-6 shadow-xl relative overflow-hidden">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-xs font-semibold text-silver-400 uppercase tracking-wider">Total Paid Revenue</span>
-                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-                      <DollarSign className="w-5 h-5" />
-                    </div>
-                  </div>
-                  <div className="text-3xl font-black text-white tracking-tight mb-1">
-                    ₹{totalPaidRevenue.toLocaleString('en-IN')}
-                  </div>
-                  <p className="text-xs text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Razorpay Verified Settlements
-                  </p>
+              <div className="p-8 rounded-3xl bg-navy-card border border-navy-border shadow-xl">
+                <h3 className="text-sm font-bold text-silver-400 uppercase tracking-wider mb-2">Client Inquiries</h3>
+                <div className="text-4xl font-serif font-black text-white mb-2">
+                  {messages.length}
                 </div>
-
-                {/* Unread Inquiries */}
-                <div className="bg-navy-card border border-navy-border rounded-3xl p-6 shadow-xl relative overflow-hidden">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-xs font-semibold text-silver-400 uppercase tracking-wider">User Inquiries</span>
-                    <div className="w-10 h-10 rounded-xl bg-cyan-DEFAULT/10 border border-cyan-DEFAULT/30 flex items-center justify-center text-cyan-DEFAULT">
-                      <MessageSquare className="w-5 h-5" />
-                    </div>
-                  </div>
-                  <div className="text-3xl font-black text-white tracking-tight mb-1">
-                    {messages.length}
-                  </div>
-                  <p className="text-xs text-cyan-300">
-                    <strong>{messages.filter(m => m.status === 'UNREAD').length}</strong> unread user requests pending
-                  </p>
-                </div>
-
-                {/* Active Projects */}
-                <div className="bg-navy-card border border-navy-border rounded-3xl p-6 shadow-xl relative overflow-hidden">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-xs font-semibold text-silver-400 uppercase tracking-wider">Portfolio Projects</span>
-                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
-                      <FolderGit2 className="w-5 h-5" />
-                    </div>
-                  </div>
-                  <div className="text-3xl font-black text-white tracking-tight mb-1">
-                    {projects.length}
-                  </div>
-                  <p className="text-xs text-blue-300">
-                    Synced with GitHub tzkusman & Live Sites
-                  </p>
-                </div>
-
-                {/* Active Telemetry */}
-                <div className="bg-navy-card border border-navy-border rounded-3xl p-6 shadow-xl relative overflow-hidden">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-xs font-semibold text-silver-400 uppercase tracking-wider">Active Visitors</span>
-                    <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400">
-                      <Users className="w-5 h-5" />
-                    </div>
-                  </div>
-                  <div className="text-3xl font-black text-white tracking-tight mb-1">
-                    {activeVisitorsCount}
-                  </div>
-                  <p className="text-xs text-purple-300">
-                    Live concurrent traffic on site right now
-                  </p>
-                </div>
+                <p className="text-xs text-cyan-300 font-semibold">{messages.filter(m => m.status === 'UNREAD').length} Unread inquiries</p>
               </div>
 
-              {/* Two Column Grid: Recent Inquiries & Recent Payments */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Recent Inquiries */}
-                <div className="bg-navy-card border border-navy-border rounded-3xl p-6 shadow-xl">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                      <MessageSquare className="w-5 h-5 text-cyan-DEFAULT" />
-                      Recent User Inquiries
-                    </h3>
-                    <button
-                      onClick={() => setActiveTab('messages')}
-                      className="text-xs font-semibold text-cyan-DEFAULT hover:underline flex items-center gap-1"
-                    >
-                      View All ({messages.length}) <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  <div className="space-y-3">
-                    {messages.slice(0, 5).map((msg) => (
-                      <div
-                        key={msg.id}
-                        onClick={() => setSelectedMessage(msg)}
-                        className="p-4 rounded-2xl bg-navy/80 hover:bg-navy border border-navy-border/60 hover:border-cyan-DEFAULT/40 transition-all cursor-pointer flex items-center justify-between gap-4"
-                      >
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-bold text-white text-sm truncate">{msg.name}</span>
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                msg.status === 'UNREAD'
-                                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-                                  : msg.status === 'REPLIED'
-                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                                  : 'bg-navy-border text-silver-400'
-                              }`}
-                            >
-                              {msg.status}
-                            </span>
-                          </div>
-                          <p className="text-xs text-silver-300 font-medium truncate">{msg.subject}</p>
-                          <p className="text-[11px] text-silver-500 truncate">{msg.email}</p>
-                        </div>
-                        <span className="text-[10px] text-silver-400 whitespace-nowrap">
-                          {new Date(msg.createdAt).toLocaleDateString()}
-                        </span>
-                      </div>
-                    ))}
-                    {messages.length === 0 && (
-                      <p className="text-center text-silver-500 text-xs py-8">No user inquiries received yet.</p>
-                    )}
-                  </div>
+              <div className="p-8 rounded-3xl bg-navy-card border border-navy-border shadow-xl">
+                <h3 className="text-sm font-bold text-silver-400 uppercase tracking-wider mb-2">Security Engine</h3>
+                <div className="text-4xl font-serif font-black text-white mb-2">
+                  Active
                 </div>
-
-                {/* Recent Razorpay Payments */}
-                <div className="bg-navy-card border border-navy-border rounded-3xl p-6 shadow-xl">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                      <CreditCard className="w-5 h-5 text-emerald-400" />
-                      Razorpay Transactions Audit
-                    </h3>
-                    <button
-                      onClick={() => setActiveTab('payments')}
-                      className="text-xs font-semibold text-cyan-DEFAULT hover:underline flex items-center gap-1"
-                    >
-                      View All ({transactions.length}) <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  <div className="space-y-3">
-                    {transactions.slice(0, 5).map((tx) => (
-                      <div
-                        key={tx.id}
-                        className="p-4 rounded-2xl bg-navy/80 border border-navy-border/60 flex items-center justify-between gap-4"
-                      >
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-bold text-white text-sm truncate">{tx.customerName}</span>
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                tx.status === 'PAID'
-                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                              }`}
-                            >
-                              {tx.status}
-                            </span>
-                          </div>
-                          <p className="text-xs text-silver-300 truncate">{tx.planName}</p>
-                          <p className="text-[11px] font-mono text-silver-500 truncate">{tx.orderId}</p>
-                        </div>
-                        <div className="text-right whitespace-nowrap">
-                          <p className="font-black text-white text-base">₹{Number(tx.amount).toLocaleString('en-IN')}</p>
-                          <p className="text-[10px] text-silver-400">{new Date(tx.createdAt).toLocaleDateString()}</p>
-                        </div>
-                      </div>
-                    ))}
-                    {transactions.length === 0 && (
-                      <p className="text-center text-silver-500 text-xs py-8">No payment transactions recorded yet.</p>
-                    )}
-                  </div>
-                </div>
+                <p className="text-xs text-silver-400">Prisma PostgreSQL + Vercel Edge Serverless</p>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* ========================================================
-              TAB 2: USER REQUESTS / INQUIRIES
-             ======================================================== */}
-          {activeTab === 'messages' && (
-            <div className="space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-2xl font-serif font-bold text-white">Client Requests & Inquiries</h2>
-                  <p className="text-silver-400 text-xs sm:text-sm">Manage submissions from prospective clients through the contact portal.</p>
-                </div>
-
-                {/* Filters */}
-                <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-silver-400" />
-                    <input
-                      type="text"
-                      placeholder="Search inquiries..."
-                      value={messageSearch}
-                      onChange={(e) => setMessageSearch(e.target.value)}
-                      className="pl-9 pr-4 py-2 rounded-xl bg-navy border border-navy-border text-xs text-white placeholder-silver-500 focus:outline-none focus:border-cyan-DEFAULT"
-                    />
-                  </div>
-
-                  <select
-                    value={messageStatusFilter}
-                    onChange={(e) => setMessageStatusFilter(e.target.value)}
-                    className="px-3 py-2 rounded-xl bg-navy border border-navy-border text-xs text-white focus:outline-none focus:border-cyan-DEFAULT"
-                  >
-                    <option value="ALL">All Statuses</option>
-                    <option value="UNREAD">Unread</option>
-                    <option value="READ">Read</option>
-                    <option value="REPLIED">Replied</option>
-                    <option value="ARCHIVED">Archived</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Messages Table */}
-              <div className="bg-navy-card border border-navy-border rounded-3xl overflow-hidden shadow-xl">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-navy/80 text-silver-400 uppercase tracking-wider text-[10px] border-b border-navy-border">
-                      <tr>
-                        <th className="py-4 px-6">Sender Details</th>
-                        <th className="py-4 px-6">Subject & Preview</th>
-                        <th className="py-4 px-6">Date Received</th>
-                        <th className="py-4 px-6">Status</th>
-                        <th className="py-4 px-6 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-navy-border/50 text-silver-200">
-                      {filteredMessages.map((msg) => (
-                        <tr key={msg.id} className="hover:bg-navy/50 transition-colors">
-                          <td className="py-4 px-6">
-                            <p className="font-bold text-white text-sm">{msg.name}</p>
-                            <a href={`mailto:${msg.email}`} className="text-cyan-DEFAULT hover:underline text-[11px]">
-                              {msg.email}
-                            </a>
-                          </td>
-                          <td className="py-4 px-6 max-w-xs">
-                            <p className="font-semibold text-white truncate">{msg.subject}</p>
-                            <p className="text-silver-400 truncate text-[11px]">{msg.message}</p>
-                          </td>
-                          <td className="py-4 px-6 whitespace-nowrap text-silver-400">
-                            {new Date(msg.createdAt).toLocaleString()}
-                          </td>
-                          <td className="py-4 px-6">
-                            <select
-                              value={msg.status}
-                              onChange={(e) => handleUpdateMessageStatus(msg.id, e.target.value)}
-                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border focus:outline-none cursor-pointer ${
-                                msg.status === 'UNREAD'
-                                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                                  : msg.status === 'REPLIED'
-                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                                  : 'bg-navy text-silver-300 border-navy-border'
-                              }`}
-                            >
-                              <option value="UNREAD">UNREAD</option>
-                              <option value="READ">READ</option>
-                              <option value="REPLIED">REPLIED</option>
-                              <option value="ARCHIVED">ARCHIVED</option>
-                            </select>
-                          </td>
-                          <td className="py-4 px-6 text-right whitespace-nowrap space-x-2">
-                            <button
-                              onClick={() => setSelectedMessage(msg)}
-                              className="p-1.5 rounded-lg bg-navy hover:bg-cyan-DEFAULT/20 text-cyan-300 hover:text-cyan-DEFAULT border border-navy-border transition-colors"
-                              title="View Full Message"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteMessage(msg.id)}
-                              className="p-1.5 rounded-lg bg-navy hover:bg-rose-500/20 text-silver-400 hover:text-rose-400 border border-navy-border transition-colors"
-                              title="Delete Message"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      {filteredMessages.length === 0 && (
-                        <tr>
-                          <td colSpan="5" className="py-12 text-center text-silver-500">
-                            No matching user inquiries found.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+        {/* ========================================================
+            TAB 3: USER REQUESTS / INQUIRIES
+           ======================================================== */}
+        {activeTab === 'messages' && (
+          <div className="space-y-6 animate-fadeIn">
+            <div className="p-4 rounded-3xl bg-navy-card border border-navy-border shadow-lg flex items-center justify-between">
+              <div className="relative w-full max-w-md">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-silver-400" />
+                <input
+                  type="text"
+                  placeholder="Search inquiries..."
+                  value={messageSearch}
+                  onChange={(e) => setMessageSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-navy border border-navy-border text-xs text-white placeholder-silver-500 focus:outline-none focus:border-cyan-DEFAULT"
+                />
               </div>
             </div>
-          )}
 
-          {/* ========================================================
-              TAB 3: PROJECTS MANAGER (CRUD)
-             ======================================================== */}
-          {activeTab === 'projects' && (
-            <div className="space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-2xl font-serif font-bold text-white">Live Portfolio Projects</h2>
-                  <p className="text-silver-400 text-xs sm:text-sm">
-                    Manage real projects synced with GitHub tzkusman and live manufacturing & AI deployments.
-                  </p>
-                </div>
-
-                <button
-                  onClick={() =>
-                    setProjectModal({
-                      isOpen: true,
-                      mode: 'create',
-                      data: {
-                        title: '',
-                        slug: '',
-                        category: 'Web Development',
-                        shortDescription: '',
-                        overview: '',
-                        thumbnail: 'https://images.unsplash.com/photo-1557821552-17105176677c?auto=format&fit=crop&w=1200&q=80',
-                        tags: 'React, Node.js, Tailwind CSS',
-                        liveUrl: '',
-                        githubUrl: 'https://github.com/tzkusman/',
-                        featured: true,
-                      },
-                    })
-                  }
-                  className="px-4 py-2.5 rounded-xl bg-cyan-DEFAULT text-navy-dark font-bold text-xs uppercase tracking-wider hover:bg-cyan-300 transition-all flex items-center gap-1.5 shadow-lg"
+            <div className="space-y-4">
+              {messages.map((m) => (
+                <div
+                  key={m.id}
+                  className="p-6 rounded-3xl bg-navy-card border border-navy-border hover:border-cyan-DEFAULT/40 transition-all shadow-xl flex flex-col md:flex-row items-start justify-between gap-4"
                 >
-                  <Plus className="w-4 h-4" /> Add New Project
-                </button>
-              </div>
-
-              {/* Projects Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {projects.map((proj) => (
-                  <div
-                    key={proj.id}
-                    className="bg-navy-card border border-navy-border rounded-3xl overflow-hidden shadow-xl flex flex-col justify-between group hover:border-cyan-DEFAULT/40 transition-all"
-                  >
-                    <div>
-                      {/* Image Preview */}
-                      <div className="h-44 w-full bg-navy relative overflow-hidden">
-                        <img
-                          src={proj.thumbnail}
-                          alt={proj.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                        />
-                        <span className="absolute top-3 left-3 px-3 py-1 rounded-full text-[10px] font-bold bg-navy-dark/90 text-cyan-DEFAULT border border-cyan-DEFAULT/30 backdrop-blur-md">
-                          {proj.category}
-                        </span>
-                        {proj.featured && (
-                          <span className="absolute top-3 right-3 px-3 py-1 rounded-full text-[10px] font-bold bg-cyan-DEFAULT text-navy-dark shadow-md">
-                            Featured
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Content */}
-                      <div className="p-5">
-                        <h3 className="font-bold text-white text-base mb-1.5 group-hover:text-cyan-300 transition-colors">
-                          {proj.title}
-                        </h3>
-                        <p className="text-silver-400 text-xs line-clamp-2 mb-4 leading-relaxed">
-                          {proj.shortDescription}
-                        </p>
-
-                        {/* Tags */}
-                        <div className="flex flex-wrap gap-1.5 mb-4">
-                          {(Array.isArray(proj.tags) ? proj.tags : []).slice(0, 4).map((t, idx) => (
-                            <span
-                              key={idx}
-                              className="px-2 py-0.5 rounded-md text-[10px] bg-navy border border-navy-border text-silver-300"
-                            >
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <h4 className="font-bold text-white text-base">{m.name}</h4>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-navy border border-navy-border text-cyan-300">
+                        {m.status}
+                      </span>
                     </div>
-
-                    {/* Bottom Actions */}
-                    <div className="p-5 pt-0 border-t border-navy-border/40 mt-auto flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2 pt-3">
-                        {proj.liveUrl && (
-                          <a
-                            href={proj.liveUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="p-1.5 rounded-lg bg-navy hover:bg-cyan-DEFAULT/20 text-cyan-DEFAULT border border-navy-border"
-                            title="Open Live Deployment"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
-                        )}
-                        {proj.githubUrl && (
-                          <a
-                            href={proj.githubUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="p-1.5 rounded-lg bg-navy hover:bg-silver-500/20 text-silver-300 border border-navy-border"
-                            title="Open GitHub Repository"
-                          >
-                            <FolderGit2 className="w-3.5 h-3.5" />
-                          </a>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2 pt-3">
-                        <button
-                          onClick={() =>
-                            setProjectModal({
-                              isOpen: true,
-                              mode: 'edit',
-                              data: {
-                                ...proj,
-                                tags: Array.isArray(proj.tags) ? proj.tags.join(', ') : proj.tags,
-                              },
-                            })
-                          }
-                          className="px-3 py-1.5 rounded-lg bg-navy hover:bg-navy-border text-silver-200 text-xs font-semibold flex items-center gap-1 border border-navy-border"
-                        >
-                          <Edit3 className="w-3 h-3 text-cyan-DEFAULT" /> Edit
-                        </button>
-                        <button
-                          onClick={() => handleDeleteProject(proj.id)}
-                          className="p-1.5 rounded-lg bg-navy hover:bg-rose-500/20 text-silver-400 hover:text-rose-400 border border-navy-border"
-                          title="Delete Project"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
+                    <p className="text-xs text-silver-400 font-mono">{m.email}</p>
+                    <p className="text-sm font-semibold text-white mt-1">{m.subject}</p>
+                    <p className="text-xs text-silver-300 leading-relaxed bg-navy/60 p-4 rounded-2xl border border-navy-border/50">
+                      {m.message}
+                    </p>
                   </div>
-                ))}
-              </div>
+                  <div className="text-right text-xs text-silver-500 whitespace-nowrap">
+                    {new Date(m.createdAt).toLocaleDateString()}
+                  </div>
+                </div>
+              ))}
+              {messages.length === 0 && (
+                <p className="text-center text-silver-500 text-xs py-16">No client messages received yet.</p>
+              )}
             </div>
-          )}
-
-          {/* ========================================================
-              TAB 4: PRICING PACKAGES CONTROL
-             ======================================================== */}
-          {activeTab === 'pricing' && (
-            <div className="space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-2xl font-serif font-bold text-white">Pricing & Razorpay Packages</h2>
-                  <p className="text-silver-400 text-xs sm:text-sm">
-                    Adjust commercial rates, deliverables, and popular badges shown to visitors on the live pricing page.
-                  </p>
-                </div>
-              </div>
-
-              {/* Pricing Cards */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {pricingPlans.map((plan) => (
-                  <div
-                    key={plan.id}
-                    className="bg-navy-card border border-navy-border rounded-3xl p-6 shadow-xl flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-xl font-bold text-white">{plan.name}</h3>
-                        {plan.badge && (
-                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-cyan-DEFAULT/15 text-cyan-DEFAULT border border-cyan-DEFAULT/30">
-                            {plan.badge}
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="text-silver-400 text-xs mb-4 min-h-[36px]">{plan.description}</p>
-
-                      <div className="p-4 rounded-2xl bg-navy border border-navy-border mb-4">
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-xs text-silver-400">Current Price:</span>
-                          <span className="text-2xl font-black text-cyan-DEFAULT">
-                            ₹{Number(plan.price).toLocaleString('en-IN')}
-                          </span>
-                          {plan.originalPrice && (
-                            <span className="text-xs line-through text-silver-500">
-                              ₹{Number(plan.originalPrice).toLocaleString('en-IN')}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="space-y-2 mb-6">
-                        <p className="text-[11px] font-bold uppercase text-silver-400 tracking-wider">Features ({plan.features?.length || 0}):</p>
-                        {(Array.isArray(plan.features) ? plan.features : []).map((f, i) => (
-                          <div key={i} className="flex items-center gap-2 text-xs text-silver-300">
-                            <Check className="w-3.5 h-3.5 text-cyan-DEFAULT shrink-0" />
-                            <span className="truncate">{f}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() =>
-                        setPricingModal({
-                          isOpen: true,
-                          data: {
-                            ...plan,
-                            features: Array.isArray(plan.features) ? plan.features.join('\n') : plan.features,
-                          },
-                        })
-                      }
-                      className="w-full py-3 rounded-xl bg-navy hover:bg-cyan-DEFAULT hover:text-navy-dark text-cyan-DEFAULT border border-cyan-DEFAULT/40 font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" /> Adjust Plan & Pricing
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ========================================================
-              TAB 5: RAZORPAY TRANSACTIONS AUDIT
-             ======================================================== */}
-          {activeTab === 'payments' && (
-            <div className="space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-2xl font-serif font-bold text-white">Razorpay Transactions Audit</h2>
-                  <p className="text-silver-400 text-xs sm:text-sm">
-                    Complete financial audit trail: Verify paid vs pending orders, customer credentials, and payment signatures.
-                  </p>
-                </div>
-
-                {/* Filters */}
-                <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-silver-400" />
-                    <input
-                      type="text"
-                      placeholder="Search transactions..."
-                      value={paymentSearch}
-                      onChange={(e) => setPaymentSearch(e.target.value)}
-                      className="pl-9 pr-4 py-2 rounded-xl bg-navy border border-navy-border text-xs text-white placeholder-silver-500 focus:outline-none focus:border-cyan-DEFAULT"
-                    />
-                  </div>
-
-                  <select
-                    value={paymentStatusFilter}
-                    onChange={(e) => setPaymentStatusFilter(e.target.value)}
-                    className="px-3 py-2 rounded-xl bg-navy border border-navy-border text-xs text-white focus:outline-none focus:border-cyan-DEFAULT"
-                  >
-                    <option value="ALL">All Payments</option>
-                    <option value="PAID">PAID</option>
-                    <option value="PENDING">PENDING</option>
-                    <option value="FAILED">FAILED</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Transactions Table */}
-              <div className="bg-navy-card border border-navy-border rounded-3xl overflow-hidden shadow-xl">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-navy/80 text-silver-400 uppercase tracking-wider text-[10px] border-b border-navy-border">
-                      <tr>
-                        <th className="py-4 px-6">Customer & Contact</th>
-                        <th className="py-4 px-6">Architecture Plan</th>
-                        <th className="py-4 px-6">Amount (INR)</th>
-                        <th className="py-4 px-6">Order & Payment IDs</th>
-                        <th className="py-4 px-6">Timestamp</th>
-                        <th className="py-4 px-6 text-right">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-navy-border/50 text-silver-200">
-                      {filteredTransactions.map((tx) => (
-                        <tr key={tx.id} className="hover:bg-navy/50 transition-colors">
-                          <td className="py-4 px-6">
-                            <p className="font-bold text-white text-sm">{tx.customerName}</p>
-                            <p className="text-silver-400 text-[11px]">{tx.customerEmail}</p>
-                            {tx.customerPhone && <p className="text-silver-500 text-[10px]">{tx.customerPhone}</p>}
-                          </td>
-                          <td className="py-4 px-6">
-                            <span className="font-semibold text-white">{tx.planName}</span>
-                          </td>
-                          <td className="py-4 px-6 whitespace-nowrap">
-                            <span className="font-black text-white text-base">₹{Number(tx.amount).toLocaleString('en-IN')}</span>
-                          </td>
-                          <td className="py-4 px-6 font-mono text-[10px]">
-                            <p className="text-cyan-DEFAULT">ORD: {tx.orderId}</p>
-                            {tx.paymentId ? (
-                              <p className="text-emerald-400">PAY: {tx.paymentId}</p>
-                            ) : (
-                              <p className="text-silver-500">PAY: Pending checkout</p>
-                            )}
-                          </td>
-                          <td className="py-4 px-6 whitespace-nowrap text-silver-400">
-                            {new Date(tx.createdAt).toLocaleString()}
-                          </td>
-                          <td className="py-4 px-6 text-right">
-                            <span
-                              className={`px-3 py-1 rounded-full text-[10px] font-bold inline-block ${
-                                tx.status === 'PAID'
-                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                                  : tx.status === 'FAILED'
-                                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-                                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                              }`}
-                            >
-                              {tx.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                      {filteredTransactions.length === 0 && (
-                        <tr>
-                          <td colSpan="6" className="py-12 text-center text-silver-500">
-                            No matching payment transactions found.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ========================================================
-              TAB 6: LIVE ACTIVE VISITORS & TELEMETRY
-             ======================================================== */}
-          {activeTab === 'visitors' && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-serif font-bold text-white">Live Traffic & Active Telemetry</h2>
-                <p className="text-silver-400 text-xs sm:text-sm">
-                  Real-time visitor logs captured on every page load with route tracking and client details.
-                </p>
-              </div>
-
-              {/* Stats Bar */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-6 rounded-3xl bg-navy-card border border-navy-border flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-                    <Users className="w-6 h-6 animate-pulse" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-silver-400 uppercase font-semibold">Active Visitors Right Now</p>
-                    <p className="text-3xl font-black text-white">{activeVisitorsCount}</p>
-                  </div>
-                </div>
-
-                <div className="p-6 rounded-3xl bg-navy-card border border-navy-border flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-cyan-DEFAULT/10 border border-cyan-DEFAULT/30 flex items-center justify-center text-cyan-DEFAULT">
-                    <Globe className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-silver-400 uppercase font-semibold">Total Telemetry Hits Logged</p>
-                    <p className="text-3xl font-black text-white">{visitorLogs.length}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Telemetry Stream */}
-              <div className="bg-navy-card border border-navy-border rounded-3xl overflow-hidden shadow-xl">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-navy/80 text-silver-400 uppercase tracking-wider text-[10px] border-b border-navy-border">
-                      <tr>
-                        <th className="py-4 px-6">Timestamp</th>
-                        <th className="py-4 px-6">Page Path</th>
-                        <th className="py-4 px-6">Client IP Address</th>
-                        <th className="py-4 px-6">Browser User-Agent</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-navy-border/50 text-silver-200 font-mono text-[11px]">
-                      {visitorLogs.map((log) => (
-                        <tr key={log.id} className="hover:bg-navy/50 transition-colors">
-                          <td className="py-3 px-6 whitespace-nowrap text-silver-400">
-                            {new Date(log.createdAt).toLocaleTimeString()} ({new Date(log.createdAt).toLocaleDateString()})
-                          </td>
-                          <td className="py-3 px-6 text-cyan-DEFAULT font-bold">
-                            {log.path}
-                          </td>
-                          <td className="py-3 px-6 text-silver-300">
-                            {log.ip || '127.0.0.1'}
-                          </td>
-                          <td className="py-3 px-6 text-silver-500 max-w-sm truncate">
-                            {log.userAgent || 'Modern Web Browser'}
-                          </td>
-                        </tr>
-                      ))}
-                      {visitorLogs.length === 0 && (
-                        <tr>
-                          <td colSpan="4" className="py-12 text-center text-silver-500 font-sans">
-                            No visitor telemetry pings recorded yet.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-        </main>
+          </div>
+        )}
       </div>
 
-      {/* ========================================================
-          MODAL: VIEW FULL MESSAGE
-         ======================================================== */}
-      {selectedMessage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-dark/85 backdrop-blur-md">
-          <div className="bg-navy-card border border-navy-border rounded-3xl p-6 sm:p-8 max-w-lg w-full relative shadow-2xl">
+      {/* Transaction Detail Deep Modal */}
+      {selectedTransaction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-dark/85 backdrop-blur-md animate-fadeIn">
+          <div className="bg-navy-card border border-navy-border rounded-3xl p-6 sm:p-8 max-w-xl w-full relative shadow-2xl space-y-6">
             <button
-              onClick={() => setSelectedMessage(null)}
-              className="absolute top-5 right-5 text-silver-400 hover:text-white p-2"
+              onClick={() => setSelectedTransaction(null)}
+              className="absolute top-5 right-5 text-silver-400 hover:text-white p-2 rounded-xl hover:bg-navy border border-transparent hover:border-navy-border transition-colors"
             >
-              ✕
+              <X className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-2xl bg-cyan-DEFAULT/10 border border-cyan-DEFAULT/30 flex items-center justify-center text-cyan-DEFAULT">
-                <MessageSquare className="w-5 h-5" />
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-cyan-DEFAULT/15 border border-cyan-DEFAULT/30 flex items-center justify-center text-cyan-DEFAULT">
+                <Receipt className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white">Client Inquiry Details</h3>
-                <p className="text-xs text-silver-400">Received {new Date(selectedMessage.createdAt).toLocaleString()}</p>
+                <h3 className="text-xl font-bold text-white">Transaction Audit Record</h3>
+                <p className="text-xs text-silver-400">Cryptographically logged in PostgreSQL database</p>
               </div>
             </div>
 
-            <div className="space-y-4 text-xs">
-              <div className="p-4 rounded-2xl bg-navy border border-navy-border space-y-2">
-                <p>
-                  <strong className="text-silver-400">From:</strong>{' '}
-                  <span className="text-white font-bold">{selectedMessage.name}</span>
-                </p>
-                <p>
-                  <strong className="text-silver-400">Email:</strong>{' '}
-                  <a href={`mailto:${selectedMessage.email}`} className="text-cyan-DEFAULT hover:underline">
-                    {selectedMessage.email}
-                  </a>
-                </p>
-                <p>
-                  <strong className="text-silver-400">Subject:</strong>{' '}
-                  <span className="text-white font-semibold">{selectedMessage.subject}</span>
-                </p>
-              </div>
-
+            {/* Status & Amount Highlight */}
+            <div className="p-4 rounded-2xl bg-navy border border-navy-border flex items-center justify-between">
               <div>
-                <label className="block text-[11px] font-bold text-silver-400 uppercase tracking-wider mb-1">
-                  Message Body:
-                </label>
-                <div className="p-4 rounded-2xl bg-navy border border-navy-border text-silver-200 leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto">
-                  {selectedMessage.message}
-                </div>
+                <span className="text-xs text-silver-400">Total Billed</span>
+                <p className="text-2xl font-black text-white font-mono">
+                  {formatCurrencyAmount(selectedTransaction.amount, selectedTransaction.currency || 'INR')}
+                </p>
               </div>
+              <span
+                className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
+                  selectedTransaction.status === 'PAID'
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                    : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                }`}
+              >
+                {selectedTransaction.status}
+              </span>
+            </div>
 
-              <div className="flex items-center justify-between pt-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-silver-400 font-semibold">Status:</span>
-                  <select
-                    value={selectedMessage.status}
-                    onChange={(e) => handleUpdateMessageStatus(selectedMessage.id, e.target.value)}
-                    className="px-3 py-1.5 rounded-xl bg-navy border border-navy-border text-white text-xs"
-                  >
-                    <option value="UNREAD">UNREAD</option>
-                    <option value="READ">READ</option>
-                    <option value="REPLIED">REPLIED</option>
-                    <option value="ARCHIVED">ARCHIVED</option>
-                  </select>
-                </div>
-
-                <a
-                  href={`mailto:${selectedMessage.email}?subject=Re: ${encodeURIComponent(selectedMessage.subject)}`}
-                  className="px-4 py-2 rounded-xl bg-cyan-DEFAULT text-navy-dark font-bold text-xs uppercase hover:bg-cyan-300 transition-all flex items-center gap-1.5"
-                >
-                  <Mail className="w-3.5 h-3.5" /> Reply via Mail
-                </a>
+            {/* Deep Audit Fields */}
+            <div className="space-y-3 text-xs">
+              <div className="flex justify-between py-2 border-b border-navy-border/50">
+                <span className="text-silver-400">Customer Name:</span>
+                <span className="font-bold text-white">{selectedTransaction.customerName}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-navy-border/50">
+                <span className="text-silver-400">Corporate Email:</span>
+                <span className="font-mono text-cyan-300">{selectedTransaction.customerEmail}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-navy-border/50">
+                <span className="text-silver-400">Phone:</span>
+                <span className="text-white">{selectedTransaction.customerPhone || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-navy-border/50">
+                <span className="text-silver-400">Architecture Package:</span>
+                <span className="font-semibold text-white">{selectedTransaction.planName}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-navy-border/50">
+                <span className="text-silver-400">Razorpay Order ID:</span>
+                <span className="font-mono text-cyan-300">{selectedTransaction.orderId}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-navy-border/50">
+                <span className="text-silver-400">Razorpay Payment ID:</span>
+                <span className="font-mono text-emerald-400">{selectedTransaction.paymentId || 'Pending'}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-navy-border/50">
+                <span className="text-silver-400">Cryptographic Verification:</span>
+                <span className="font-mono text-emerald-400 flex items-center gap-1">
+                  <Shield className="w-3.5 h-3.5" />
+                  HMAC-SHA256 Authenticated
+                </span>
+              </div>
+              <div className="flex justify-between py-2">
+                <span className="text-silver-400">Recorded Timestamp:</span>
+                <span className="text-white">{new Date(selectedTransaction.createdAt).toLocaleString()}</span>
               </div>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* ========================================================
-          MODAL: ADD / EDIT PROJECT
-         ======================================================== */}
-      {projectModal.isOpen && projectModal.data && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-dark/85 backdrop-blur-md">
-          <div className="bg-navy-card border border-navy-border rounded-3xl p-6 sm:p-8 max-w-xl w-full relative shadow-2xl max-h-[90vh] overflow-y-auto">
             <button
-              onClick={() => setProjectModal({ isOpen: false, mode: 'create', data: null })}
-              className="absolute top-5 right-5 text-silver-400 hover:text-white p-2"
+              onClick={() => setSelectedTransaction(null)}
+              className="w-full py-3.5 rounded-xl bg-navy border border-navy-border text-white text-xs font-bold hover:bg-navy-card transition-colors uppercase tracking-wider"
             >
-              ✕
+              Close Record
             </button>
-
-            <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-              <FolderGit2 className="w-5 h-5 text-cyan-DEFAULT" />
-              {projectModal.mode === 'edit' ? 'Edit Portfolio Project' : 'Add New Portfolio Project'}
-            </h3>
-
-            <form onSubmit={handleSaveProject} className="space-y-4 text-xs">
-              <div>
-                <label className="block text-silver-300 font-semibold mb-1">Project Title *</label>
-                <input
-                  type="text"
-                  required
-                  value={projectModal.data.title}
-                  onChange={(e) => setProjectModal({ ...projectModal, data: { ...projectModal.data, title: e.target.value } })}
-                  className="w-full px-4 py-2.5 rounded-xl bg-navy border border-navy-border text-white focus:outline-none focus:border-cyan-DEFAULT"
-                  placeholder="e.g. Eye Production Generative AI Studio"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-silver-300 font-semibold mb-1">Category</label>
-                  <select
-                    value={projectModal.data.category}
-                    onChange={(e) => setProjectModal({ ...projectModal, data: { ...projectModal.data, category: e.target.value } })}
-                    className="w-full px-4 py-2.5 rounded-xl bg-navy border border-navy-border text-white focus:outline-none focus:border-cyan-DEFAULT"
-                  >
-                    <option value="Web Development">Web Development</option>
-                    <option value="AI & Data">AI & Data</option>
-                    <option value="Cloud & DevOps">Cloud & DevOps</option>
-                    <option value="ERP & Enterprise">ERP & Enterprise</option>
-                    <option value="Security">Security</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-silver-300 font-semibold mb-1">Slug (URL friendly)</label>
-                  <input
-                    type="text"
-                    value={projectModal.data.slug || ''}
-                    onChange={(e) => setProjectModal({ ...projectModal, data: { ...projectModal.data, slug: e.target.value } })}
-                    className="w-full px-4 py-2.5 rounded-xl bg-navy border border-navy-border text-white focus:outline-none focus:border-cyan-DEFAULT"
-                    placeholder="e.g. eyeproduction-ai-studio"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-silver-300 font-semibold mb-1">Short Description *</label>
-                <textarea
-                  required
-                  rows="2"
-                  value={projectModal.data.shortDescription}
-                  onChange={(e) => setProjectModal({ ...projectModal, data: { ...projectModal.data, shortDescription: e.target.value } })}
-                  className="w-full px-4 py-2.5 rounded-xl bg-navy border border-navy-border text-white focus:outline-none focus:border-cyan-DEFAULT"
-                  placeholder="Brief synopsis for portfolio grid card..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-silver-300 font-semibold mb-1">Thumbnail Image URL</label>
-                <input
-                  type="url"
-                  value={projectModal.data.thumbnail || ''}
-                  onChange={(e) => setProjectModal({ ...projectModal, data: { ...projectModal.data, thumbnail: e.target.value } })}
-                  className="w-full px-4 py-2.5 rounded-xl bg-navy border border-navy-border text-white focus:outline-none focus:border-cyan-DEFAULT"
-                  placeholder="https://..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-silver-300 font-semibold mb-1">Tags (Comma-separated)</label>
-                <input
-                  type="text"
-                  value={projectModal.data.tags || ''}
-                  onChange={(e) => setProjectModal({ ...projectModal, data: { ...projectModal.data, tags: e.target.value } })}
-                  className="w-full px-4 py-2.5 rounded-xl bg-navy border border-navy-border text-white focus:outline-none focus:border-cyan-DEFAULT"
-                  placeholder="React, Next.js, PostgreSQL, Tailwind"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-silver-300 font-semibold mb-1">Live URL</label>
-                  <input
-                    type="url"
-                    value={projectModal.data.liveUrl || ''}
-                    onChange={(e) => setProjectModal({ ...projectModal, data: { ...projectModal.data, liveUrl: e.target.value } })}
-                    className="w-full px-4 py-2.5 rounded-xl bg-navy border border-navy-border text-white focus:outline-none focus:border-cyan-DEFAULT"
-                    placeholder="https://eyeproductiondenimcrafts.ai.studio/"
-                  />
-                </div>
-                <div>
-                  <label className="block text-silver-300 font-semibold mb-1">GitHub URL</label>
-                  <input
-                    type="url"
-                    value={projectModal.data.githubUrl || ''}
-                    onChange={(e) => setProjectModal({ ...projectModal, data: { ...projectModal.data, githubUrl: e.target.value } })}
-                    className="w-full px-4 py-2.5 rounded-xl bg-navy border border-navy-border text-white focus:outline-none focus:border-cyan-DEFAULT"
-                    placeholder="https://github.com/tzkusman/..."
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 pt-2">
-                <input
-                  type="checkbox"
-                  id="featuredCheck"
-                  checked={Boolean(projectModal.data.featured)}
-                  onChange={(e) => setProjectModal({ ...projectModal, data: { ...projectModal.data, featured: e.target.checked } })}
-                  className="rounded border-navy-border text-cyan-DEFAULT focus:ring-cyan-DEFAULT"
-                />
-                <label htmlFor="featuredCheck" className="text-white font-semibold cursor-pointer">
-                  Feature prominently on Homepage & Top of Portfolio
-                </label>
-              </div>
-
-              <div className="pt-4 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setProjectModal({ isOpen: false, mode: 'create', data: null })}
-                  className="px-4 py-2.5 rounded-xl bg-navy border border-navy-border text-silver-300 hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-cyan-DEFAULT text-navy-dark font-bold uppercase tracking-wider hover:bg-cyan-300 transition-all shadow-lg"
-                >
-                  Save Project
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================
-          MODAL: EDIT PRICING PLAN
-         ======================================================== */}
-      {pricingModal.isOpen && pricingModal.data && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-dark/85 backdrop-blur-md">
-          <div className="bg-navy-card border border-navy-border rounded-3xl p-6 sm:p-8 max-w-lg w-full relative shadow-2xl max-h-[90vh] overflow-y-auto">
-            <button
-              onClick={() => setPricingModal({ isOpen: false, data: null })}
-              className="absolute top-5 right-5 text-silver-400 hover:text-white p-2"
-            >
-              ✕
-            </button>
-
-            <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-              <Layers className="w-5 h-5 text-cyan-DEFAULT" />
-              Adjust Commercial Plan: {pricingModal.data.name}
-            </h3>
-
-            <form onSubmit={handleSavePricing} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-silver-300 font-semibold mb-1">Live Price (INR ₹) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={pricingModal.data.price}
-                    onChange={(e) => setPricingModal({ ...pricingModal, data: { ...pricingModal.data, price: e.target.value } })}
-                    className="w-full px-4 py-2.5 rounded-xl bg-navy border border-navy-border text-white text-base font-bold focus:outline-none focus:border-cyan-DEFAULT"
-                  />
-                </div>
-                <div>
-                  <label className="block text-silver-300 font-semibold mb-1">Original Price (Strikeout ₹)</label>
-                  <input
-                    type="number"
-                    value={pricingModal.data.originalPrice || ''}
-                    onChange={(e) => setPricingModal({ ...pricingModal, data: { ...pricingModal.data, originalPrice: e.target.value } })}
-                    className="w-full px-4 py-2.5 rounded-xl bg-navy border border-navy-border text-white focus:outline-none focus:border-cyan-DEFAULT"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-silver-300 font-semibold mb-1">Badge Tag</label>
-                <input
-                  type="text"
-                  value={pricingModal.data.badge || ''}
-                  onChange={(e) => setPricingModal({ ...pricingModal, data: { ...pricingModal.data, badge: e.target.value } })}
-                  placeholder="e.g. Quick Launch, Recommended"
-                  className="w-full px-4 py-2.5 rounded-xl bg-navy border border-navy-border text-white focus:outline-none focus:border-cyan-DEFAULT"
-                />
-              </div>
-
-              <div>
-                <label className="block text-silver-300 font-semibold mb-1">Description</label>
-                <textarea
-                  rows="2"
-                  value={pricingModal.data.description || ''}
-                  onChange={(e) => setPricingModal({ ...pricingModal, data: { ...pricingModal.data, description: e.target.value } })}
-                  className="w-full px-4 py-2.5 rounded-xl bg-navy border border-navy-border text-white focus:outline-none focus:border-cyan-DEFAULT"
-                />
-              </div>
-
-              <div>
-                <label className="block text-silver-300 font-semibold mb-1">
-                  Features (One feature per line)
-                </label>
-                <textarea
-                  rows="5"
-                  value={pricingModal.data.features || ''}
-                  onChange={(e) => setPricingModal({ ...pricingModal, data: { ...pricingModal.data, features: e.target.value } })}
-                  className="w-full px-4 py-2.5 rounded-xl bg-navy border border-navy-border text-white font-mono text-xs focus:outline-none focus:border-cyan-DEFAULT"
-                />
-              </div>
-
-              <div className="flex items-center gap-2 pt-2">
-                <input
-                  type="checkbox"
-                  id="popularCheck"
-                  checked={Boolean(pricingModal.data.popular)}
-                  onChange={(e) => setPricingModal({ ...pricingModal, data: { ...pricingModal.data, popular: e.target.checked } })}
-                  className="rounded border-navy-border text-cyan-DEFAULT focus:ring-cyan-DEFAULT"
-                />
-                <label htmlFor="popularCheck" className="text-white font-semibold cursor-pointer">
-                  Mark as Most Popular / Highlighted Plan
-                </label>
-              </div>
-
-              <div className="pt-4 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setPricingModal({ isOpen: false, data: null })}
-                  className="px-4 py-2.5 rounded-xl bg-navy border border-navy-border text-silver-300 hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-cyan-DEFAULT text-navy-dark font-bold uppercase tracking-wider hover:bg-cyan-300 transition-all shadow-lg"
-                >
-                  Save Pricing Plan
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

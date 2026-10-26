@@ -2,27 +2,7 @@
   "version": 2,
   "rewrites": [
     {
-      "source": "/api/admin/:match*",
-      "destination": "/api/index.js"
-    },
-    {
-      "source": "/api/analytics/:match*",
-      "destination": "/api/index.js"
-    },
-    {
-      "source": "/api/skills",
-      "destination": "/api/index.js"
-    },
-    {
-      "source": "/api/services",
-      "destination": "/api/index.js"
-    },
-    {
-      "source": "/api/projects/:match*",
-      "destination": "/api/index.js"
-    },
-    {
-      "source": "/((?!api/|.*\\..*).*)",
+      "source": "/((?!api/|.*\\\\..*).*)",
       "destination": "/index.html"
     }
   ]

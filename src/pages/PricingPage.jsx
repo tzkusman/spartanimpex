@@ -18,16 +18,24 @@ import {
   ChevronDown,
   Building2,
   Layers,
-  Code
+  Code,
+  Globe
 } from 'lucide-react';
 import Container from '../components/common/Container';
 import SectionHeading from '../components/common/SectionHeading';
 import Button from '../components/common/Button';
 import { pricingPlansData, personalData } from '../data/portfolioData';
+import {
+  SUPPORTED_CURRENCIES,
+  PLAN_PRICING_MATRIX,
+  formatCurrencyAmount,
+  detectVisitorDefaultCurrency
+} from '../utils/currency';
 
 export default function PricingPage() {
   const [plans, setPlans] = useState(pricingPlansData);
   const [loading, setLoading] = useState(true);
+  const [currency, setCurrency] = useState('USD');
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '', phone: '' });
@@ -36,7 +44,29 @@ export default function PricingPage() {
   const [paymentSuccess, setPaymentSuccess] = useState(null);
   const [openFaq, setOpenFaq] = useState(null);
 
-  // Fetch dynamic plans from database if available
+  // 1. Detect visitor country & preferred currency automatically
+  useEffect(() => {
+    let isMounted = true;
+    fetch('/api/geo')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!isMounted) return;
+        if (data && data.currency && SUPPORTED_CURRENCIES[data.currency]) {
+          setCurrency(data.currency);
+        } else {
+          setCurrency(detectVisitorDefaultCurrency());
+        }
+      })
+      .catch(() => {
+        if (isMounted) setCurrency(detectVisitorDefaultCurrency());
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // 2. Fetch dynamic plans from database if available
   useEffect(() => {
     const fetchPlans = async () => {
       try {
@@ -56,7 +86,26 @@ export default function PricingPage() {
     fetchPlans();
   }, []);
 
-  // Dynamically load official Razorpay checkout SDK with safety timeout
+  // Helper to get localized price for a plan
+  const getPlanPrice = (planSlug) => {
+    const matrix = PLAN_PRICING_MATRIX[planSlug];
+    if (matrix && matrix[currency]) {
+      return matrix[currency].price;
+    }
+    const defaultPlan = plans.find((p) => p.slug === planSlug);
+    return defaultPlan ? defaultPlan.price : 14999;
+  };
+
+  const getPlanOriginalPrice = (planSlug) => {
+    const matrix = PLAN_PRICING_MATRIX[planSlug];
+    if (matrix && matrix[currency]) {
+      return matrix[currency].originalPrice;
+    }
+    const defaultPlan = plans.find((p) => p.slug === planSlug);
+    return defaultPlan ? defaultPlan.originalPrice : null;
+  };
+
+  // Dynamically load official Razorpay checkout SDK
   const loadRazorpayScript = () => {
     return new Promise((resolve) => {
       if (typeof window !== 'undefined' && window.Razorpay) {
@@ -105,7 +154,9 @@ export default function PricingPage() {
         throw new Error('Razorpay SDK failed to load. Please check your internet connection.');
       }
 
-      // Step 1: Create Order on backend
+      const activePrice = getPlanPrice(selectedPlan.slug);
+
+      // Step 1: Create Order on backend with requested currency
       const res = await fetch('/api/payment/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -114,6 +165,7 @@ export default function PricingPage() {
           customerName: formData.name,
           customerEmail: formData.email,
           customerPhone: formData.phone,
+          currency: currency,
         }),
       });
 
@@ -122,25 +174,26 @@ export default function PricingPage() {
       try {
         orderData = JSON.parse(resText);
       } catch {
-        throw new Error(resText.includes('FUNCTION_INVOCATION_FAILED')
-          ? 'Payment service is initializing on server. Please ensure DATABASE_URL and RAZORPAY keys are configured on Vercel.'
-          : (resText || 'Failed to communicate with payment gateway.'));
+        throw new Error(
+          resText.includes('FUNCTION_INVOCATION_FAILED')
+            ? 'Payment service is initializing on server. Please ensure RAZORPAY keys are configured on Vercel.'
+            : (resText || 'Failed to communicate with payment gateway.')
+        );
       }
       if (!res.ok) {
         throw new Error(orderData.error || 'Failed to initiate checkout order.');
       }
 
-      // Step 2: Validate Gateway Readiness & Configure Options
       if (!orderData.keyId || orderData.keyId.includes('placeholder')) {
-        throw new Error('Razorpay API Key ID is not configured on the server. Please add your RAZORPAY_KEY_ID in .env or Vercel Environment Variables.');
+        throw new Error('Razorpay API Key ID is not configured on the server. Please add your RAZORPAY_KEY_ID in Vercel Environment Variables.');
       }
 
       const options = {
         key: orderData.keyId,
         amount: orderData.amount,
-        currency: orderData.currency || 'INR',
+        currency: orderData.currency || currency,
         name: 'Spartan Impax Enterprise IT',
-        description: `${orderData.plan.name} Architecture Package`,
+        description: `${orderData.plan.name} Architecture Package (${orderData.currency || currency})`,
         image: '/assets/spartan-logo.png',
         order_id: orderData.orderId,
         prefill: {
@@ -153,7 +206,7 @@ export default function PricingPage() {
         },
         handler: async function (response) {
           try {
-            // Step 3: Verify Payment on Backend
+            // Step 2: Verify Payment on Backend
             const verifyRes = await fetch('/api/payment/verify-payment', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -161,7 +214,9 @@ export default function PricingPage() {
                 orderId: orderData.orderId,
                 paymentId: response.razorpay_payment_id,
                 signature: response.razorpay_signature,
-                paymentMethod: 'Razorpay Checkout (UPI/Card/Netbanking)',
+                paymentMethod: 'Razorpay International Checkout',
+                currency: orderData.currency || currency,
+                amount: activePrice,
               }),
             });
 
@@ -174,7 +229,8 @@ export default function PricingPage() {
               orderId: orderData.orderId,
               paymentId: response.razorpay_payment_id,
               plan: selectedPlan,
-              amount: selectedPlan.price,
+              amount: activePrice,
+              currency: orderData.currency || currency,
               customer: formData,
             });
           } catch (vErr) {
@@ -206,8 +262,12 @@ export default function PricingPage() {
 
   const faqs = [
     {
-      q: 'How does the Razorpay payment and invoice process work?',
-      a: 'We use official Razorpay production billing supporting all major UPI apps (Google Pay, PhonePe, Paytm), Netbanking across 50+ banks, and international credit/debit cards. Upon successful payment, an automated GST-compliant invoice is issued to your email with a verified digital signature.'
+      q: 'Which international currencies and payment methods do you accept?',
+      a: 'We accept payments globally in USD ($), Japanese Yen (¥), Indian Rupee (₹), Euro (€), British Pound (£), UAE Dirham (AED), Canadian Dollar (CAD), and Australian Dollar (AUD). Checkout supports all international credit/debit cards (Visa, Mastercard, Amex), Apple Pay, Google Pay, UPI (in India), and major regional banks.'
+    },
+    {
+      q: 'How does the Razorpay multi-currency checkout work?',
+      a: 'When you select your local currency, our system generates an authorized Razorpay order directly in your selected currency (e.g., $199 USD or ¥29,800 JPY). Your bank is billed without unexpected foreign transaction conversion charges.'
     },
     {
       q: 'Can we adjust or customize deliverables after checkout?',
@@ -233,22 +293,41 @@ export default function PricingPage() {
 
       <Container className="relative z-10">
         {/* Section Header */}
-        <div className="text-center max-w-3xl mx-auto mb-16">
+        <div className="text-center max-w-3xl mx-auto mb-12">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-DEFAULT/10 border border-cyan-DEFAULT/30 text-cyan-DEFAULT text-xs font-semibold tracking-wider uppercase mb-4 shadow-[0_0_15px_rgba(0,229,255,0.2)]">
             <Sparkles className="w-3.5 h-3.5 text-cyan-DEFAULT" />
-            Transparent Enterprise Architecture Pricing
+            Transparent Global Enterprise Architecture Pricing
           </div>
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-serif font-bold tracking-tight text-white mb-6">
             Invest in <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-DEFAULT via-cyan-300 to-blue-400">Production-Grade</span> Engineering
           </h1>
-          <p className="text-silver-300 text-base md:text-lg leading-relaxed">
-            From high-conversion e-commerce storefronts to mission-critical Oracle ERP portals and Generative AI studios. Instant checkout powered by Razorpay.
+          <p className="text-silver-300 text-base md:text-lg leading-relaxed mb-8">
+            From high-conversion web platforms to mission-critical Oracle Cloud portals and Generative AI studios. Instant checkout powered by Razorpay Global.
           </p>
+
+          {/* Interactive Global Currency Switcher */}
+          <div className="inline-flex items-center gap-3 p-2 rounded-2xl bg-navy-card/90 border border-navy-border shadow-xl backdrop-blur-xl">
+            <div className="flex items-center gap-2 pl-3 text-silver-300 text-xs font-semibold uppercase tracking-wider">
+              <Globe className="w-4 h-4 text-cyan-DEFAULT" />
+              <span>Billing Currency:</span>
+            </div>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              className="px-4 py-2 rounded-xl bg-navy border border-cyan-DEFAULT/30 text-white text-xs font-bold focus:outline-none focus:border-cyan-DEFAULT cursor-pointer shadow-md transition-all hover:border-cyan-DEFAULT"
+            >
+              {Object.values(SUPPORTED_CURRENCIES).map((c) => (
+                <option key={c.code} value={c.code} className="bg-navy text-white py-1">
+                  {c.flag} {c.code} ({c.symbol.trim()}) - {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
           {/* Trust badges */}
           <div className="flex flex-wrap items-center justify-center gap-6 mt-8 text-xs text-silver-400">
             <span className="flex items-center gap-1.5">
-              <Shield className="w-4 h-4 text-cyan-DEFAULT" /> 256-Bit SSL Razorpay Gateway
+              <Shield className="w-4 h-4 text-cyan-DEFAULT" /> Razorpay 256-Bit SSL Encrypted
             </span>
             <span className="flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" /> 100% IP & Code Ownership
@@ -263,6 +342,9 @@ export default function PricingPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch mb-24">
           {plans.map((plan) => {
             const isPopular = plan.popular;
+            const currentPrice = getPlanPrice(plan.slug);
+            const originalPrice = getPlanOriginalPrice(plan.slug);
+
             return (
               <div
                 key={plan.id || plan.slug}
@@ -297,13 +379,13 @@ export default function PricingPage() {
                   {/* Price Block */}
                   <div className="mb-6 p-4 rounded-2xl bg-navy/80 border border-navy-border/60">
                     <div className="flex items-baseline gap-2">
-                      <span className="text-sm font-semibold text-silver-400">INR</span>
+                      <span className="text-sm font-semibold text-cyan-300">{currency}</span>
                       <span className="text-4xl font-black text-white tracking-tight">
-                        ₹{Number(plan.price).toLocaleString('en-IN')}
+                        {formatCurrencyAmount(currentPrice, currency)}
                       </span>
-                      {plan.originalPrice && (
+                      {originalPrice && (
                         <span className="text-sm line-through text-silver-500 ml-1">
-                          ₹{Number(plan.originalPrice).toLocaleString('en-IN')}
+                          {formatCurrencyAmount(originalPrice, currency)}
                         </span>
                       )}
                     </div>
@@ -336,7 +418,7 @@ export default function PricingPage() {
                         : 'border border-cyan/40 text-cyan-300 hover:bg-cyan hover:text-navy-dark hover:shadow-[0_0_25px_rgba(0,229,255,0.4)]'
                     }`}
                   >
-                    <span>Proceed to Checkout</span>
+                    <span>Proceed in {currency}</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                   <p className="text-center text-[11px] text-silver-500 mt-2 flex items-center justify-center gap-1">
@@ -378,7 +460,7 @@ export default function PricingPage() {
         <div className="max-w-3xl mx-auto mb-20">
           <div className="text-center mb-10">
             <h2 className="text-3xl font-serif font-bold text-white mb-2">Frequently Asked Questions</h2>
-            <p className="text-silver-400 text-sm">Everything you need to know about billing, deliverables, and SLAs.</p>
+            <p className="text-silver-400 text-sm">Everything you need to know about global billing, deliverables, and SLAs.</p>
           </div>
 
           <div className="space-y-4">
@@ -432,8 +514,8 @@ export default function PricingPage() {
                     <CreditCard className="w-6 h-6 text-cyan-DEFAULT" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Razorpay Secure Checkout</h3>
-                    <p className="text-xs text-silver-400">Order for: {selectedPlan.name}</p>
+                    <h3 className="text-xl font-bold text-white">Razorpay Secure Global Checkout</h3>
+                    <p className="text-xs text-silver-400">Order for: {selectedPlan.name} ({currency})</p>
                   </div>
                 </div>
 
@@ -445,9 +527,9 @@ export default function PricingPage() {
                       <h4 className="font-bold text-white text-base">{selectedPlan.name}</h4>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-silver-400">Total Investment</p>
+                      <p className="text-xs text-silver-400">Total Investment ({currency})</p>
                       <span className="text-xl font-black text-cyan-DEFAULT">
-                        ₹{Number(selectedPlan.price).toLocaleString('en-IN')}
+                        {formatCurrencyAmount(getPlanPrice(selectedPlan.slug), currency)}
                       </span>
                     </div>
                   </div>
@@ -470,7 +552,7 @@ export default function PricingPage() {
                       required
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder="e.g., Gajender Singh Rajawat"
+                      placeholder="e.g., John Doe / Tanaka Taro"
                       className="w-full px-4 py-3 rounded-xl bg-navy border border-navy-border text-white text-sm focus:outline-none focus:border-cyan-DEFAULT focus:ring-1 focus:ring-cyan-DEFAULT transition-all"
                     />
                   </div>
@@ -491,13 +573,13 @@ export default function PricingPage() {
 
                   <div>
                     <label className="block text-xs font-semibold text-silver-300 uppercase tracking-wider mb-1.5">
-                      Contact / WhatsApp Phone (Optional)
+                      Contact / Phone (Optional)
                     </label>
                     <input
                       type="tel"
                       value={formData.phone}
                       onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      placeholder="+91 98765 43210"
+                      placeholder="+1 (555) 019-2834"
                       className="w-full px-4 py-3 rounded-xl bg-navy border border-navy-border text-white text-sm focus:outline-none focus:border-cyan-DEFAULT focus:ring-1 focus:ring-cyan-DEFAULT transition-all"
                     />
                   </div>
@@ -506,28 +588,29 @@ export default function PricingPage() {
                     <button
                       type="submit"
                       disabled={paymentLoading}
-                      className="w-full py-4 rounded-xl bg-cyan text-navy font-black text-sm tracking-wider uppercase hover:bg-cyan-300 transition-all shadow-[0_0_25px_rgba(0,229,255,0.5)] flex items-center justify-center gap-2 disabled:opacity-50" style={{ backgroundColor: "#00E5FF", color: "#040E1A" }}
+                      className="w-full py-4 rounded-xl bg-cyan text-navy font-black text-sm tracking-wider uppercase hover:bg-cyan-300 transition-all shadow-[0_0_25px_rgba(0,229,255,0.5)] flex items-center justify-center gap-2 disabled:opacity-50"
+                      style={{ backgroundColor: '#00E5FF', color: '#040E1A' }}
                     >
                       {paymentLoading ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Connecting to Razorpay...</span>
+                          <span>Connecting to Razorpay Global Gateway...</span>
                         </>
                       ) : (
                         <>
                           <Lock className="w-4 h-4" />
-                          <span>Pay ₹{Number(selectedPlan.price).toLocaleString('en-IN')} with Razorpay</span>
+                          <span>Pay {formatCurrencyAmount(getPlanPrice(selectedPlan.slug), currency)} with Razorpay</span>
                         </>
                       )}
                     </button>
                   </div>
 
                   <div className="flex items-center justify-center gap-4 text-[11px] text-silver-400 pt-2">
-                    <span>UPI (GPay / PhonePe)</span>
+                    <span>International Cards (Visa/MC/Amex)</span>
                     <span>•</span>
-                    <span>All Credit/Debit Cards</span>
+                    <span>UPI & NetBanking</span>
                     <span>•</span>
-                    <span>Netbanking</span>
+                    <span>SSL 256-bit</span>
                   </div>
                 </form>
               </>
@@ -540,7 +623,7 @@ export default function PricingPage() {
 
                 <h3 className="text-2xl font-bold text-white mb-2">Payment Successfully Verified!</h3>
                 <p className="text-silver-300 text-sm mb-6">
-                  Thank you, <strong className="text-white">{paymentSuccess.customer.name}</strong>. Your transaction has been confirmed in real time.
+                  Thank you, <strong className="text-white">{paymentSuccess.customer.name}</strong>. Your international transaction has been confirmed in real time.
                 </p>
 
                 <div className="p-4 rounded-2xl bg-navy border border-navy-border text-left text-xs space-y-2 mb-6">
@@ -549,7 +632,7 @@ export default function PricingPage() {
                     <span className="font-mono text-cyan-DEFAULT">{paymentSuccess.orderId}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-silver-400">Razorpay Payment ID:</span>
+                    <span className="text-silver-400">Payment ID:</span>
                     <span className="font-mono text-emerald-400">{paymentSuccess.paymentId}</span>
                   </div>
                   <div className="flex justify-between">
@@ -557,16 +640,17 @@ export default function PricingPage() {
                     <span className="font-semibold text-white">{paymentSuccess.plan.name}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-silver-400">Total Amount:</span>
-                    <span className="font-bold text-white">₹{Number(paymentSuccess.amount).toLocaleString('en-IN')}</span>
+                    <span className="text-silver-400">Total Charged:</span>
+                    <span className="font-bold text-white">
+                      {formatCurrencyAmount(paymentSuccess.amount, paymentSuccess.currency)}
+                    </span>
                   </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
                   <Link
                     to="/contact"
-                    onClick={() => setIsModalOpen(false)}
-                    className="flex-1 py-3 px-4 rounded-xl bg-cyan-DEFAULT text-navy-dark font-bold text-xs uppercase tracking-wider hover:bg-cyan-300 transition-all text-center flex items-center justify-center gap-1.5"
+                    className="py-3 px-5 rounded-xl bg-cyan-DEFAULT text-navy-dark font-bold text-xs uppercase tracking-wider hover:bg-cyan-300 transition-all flex items-center justify-center gap-2 shadow-lg"
                   >
                     <span>Initiate Project Onboarding</span>
                     <ArrowRight className="w-3.5 h-3.5" />
