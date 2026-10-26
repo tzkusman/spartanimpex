@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import Razorpay from 'razorpay';
 
+const USD_TO_INR_RATE = 85; // Standard benchmark conversion: 1 USD = 85 INR
+
 const FALLBACK_PLANS = {
   'starter-architecture': {
     name: 'Starter Architecture',
@@ -41,14 +43,15 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { planSlug, customerName, customerEmail, customerPhone } = req.body || {};
+    const { planSlug, customerName, customerEmail, customerPhone, paymentRail = 'ALL_CHANNELS' } = req.body || {};
 
     if (!customerEmail || !customerName) {
       return res.status(400).json({ error: 'Full name and corporate email are required for checkout.' });
     }
 
-    const requestedCurrency = 'USD'; // Globally locked to US Dollars
     const normalizedSlug = String(planSlug || '').toLowerCase().trim();
+    const isDirectUsd = paymentRail === 'DIRECT_USD';
+    const activeCurrency = isDirectUsd ? 'USD' : 'INR';
 
     // 1. Fetch live plan from database
     let planData = null;
@@ -76,10 +79,22 @@ export default async function handler(req, res) {
     }
 
     // 2. Direct USD price from database (e.g. $1, $199, $649, $1699)
-    const unitPrice = planData.price !== undefined ? Number(planData.price) : 199;
+    const unitPriceUSD = planData.price !== undefined ? Number(planData.price) : 199;
 
-    // 3. Razorpay USD subunit (cents): minimum 100 cents = $1.00 USD
-    const amountInSubunit = Math.max(100, Math.round(unitPrice * 100));
+    // 3. Amount and Currency calculation:
+    // - ALL_CHANNELS (INR): Unlocks UPI (GPay, PhonePe, QR), Netbanking, Wallets & Cards via RBI-compliant INR rail
+    // - DIRECT_USD (USD): Unlocks International Credit/Debit Cards & Apple Pay in native USD
+    let amountInSubunit;
+    let displayChargedAmount;
+
+    if (isDirectUsd) {
+      displayChargedAmount = unitPriceUSD;
+      amountInSubunit = Math.max(100, Math.round(unitPriceUSD * 100)); // Minimum 100 cents = $1.00 USD
+    } else {
+      // Convert USD base to equivalent INR (minimum ₹1 / 100 paise)
+      displayChargedAmount = Math.max(1, Math.round(unitPriceUSD * USD_TO_INR_RATE));
+      amountInSubunit = Math.max(100, displayChargedAmount * 100); // 100 paise = ₹1.00 INR
+    }
 
     const key_id = process.env.RAZORPAY_KEY_ID;
     const key_secret = process.env.RAZORPAY_KEY_SECRET;
@@ -97,7 +112,7 @@ export default async function handler(req, res) {
     try {
       rzpOrder = await razorpay.orders.create({
         amount: amountInSubunit,
-        currency: requestedCurrency,
+        currency: activeCurrency,
         receipt,
         notes: {
           planName: planData.name,
@@ -105,8 +120,10 @@ export default async function handler(req, res) {
           customerName: customerName.trim(),
           customerEmail: customerEmail.trim().toLowerCase(),
           customerPhone: customerPhone ? customerPhone.trim() : 'N/A',
-          currency: requestedCurrency,
-          priceUSD: String(unitPrice),
+          currency: activeCurrency,
+          priceUSD: String(unitPriceUSD),
+          chargedAmount: String(displayChargedAmount),
+          paymentRail: isDirectUsd ? 'DIRECT_USD' : 'ALL_CHANNELS',
         },
       });
     } catch (rzpErr) {
@@ -124,8 +141,8 @@ export default async function handler(req, res) {
           orderId: rzpOrder.id,
           planSlug: planData.slug,
           planName: planData.name,
-          amount: Math.round(unitPrice),
-          currency: requestedCurrency,
+          amount: Math.round(displayChargedAmount),
+          currency: activeCurrency,
           customerName: customerName.trim(),
           customerEmail: customerEmail.trim().toLowerCase(),
           customerPhone: customerPhone ? customerPhone.trim() : null,
@@ -139,13 +156,16 @@ export default async function handler(req, res) {
       success: true,
       orderId: rzpOrder.id,
       amount: amountInSubunit,
-      displayPrice: unitPrice,
-      currency: requestedCurrency,
+      displayPrice: displayChargedAmount,
+      displayUSD: unitPriceUSD,
+      currency: activeCurrency,
+      paymentRail: isDirectUsd ? 'DIRECT_USD' : 'ALL_CHANNELS',
       keyId: key_id,
       plan: {
         name: planData.name,
-        price: unitPrice,
-        currency: requestedCurrency,
+        priceUSD: unitPriceUSD,
+        chargedAmount: displayChargedAmount,
+        currency: activeCurrency,
         description: planData.description,
       },
       customer: {
