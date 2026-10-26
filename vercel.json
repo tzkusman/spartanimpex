@@ -2,17 +2,28 @@
   "version": 2,
   "rewrites": [
     {
-      "source": "/api/(.*)",
+      "source": "/api/admin/:match*",
       "destination": "/api/index.js"
     },
     {
-      "source": "/(.*)",
+      "source": "/api/analytics/:match*",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/api/skills",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/api/services",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/api/projects/:match*",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/((?!api/|.*\\..*).*)",
       "destination": "/index.html"
     }
-  ],
-  "functions": {
-    "api/index.js": {
-      "includeFiles": "prisma/**"
-    }
-  }
+  ]
 }
