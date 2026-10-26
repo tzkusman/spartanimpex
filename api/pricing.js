@@ -93,18 +93,23 @@ const DEFAULT_PLANS = [
   }
 ];
 
-// Helper to compute prices map for each currency
+// Helper to compute prices map for each currency with minimum 1 unit floor
 function computeMultiCurrencyPrices(inrAmount) {
-  if (!inrAmount || typeof inrAmount !== 'number') return {};
+  if (inrAmount === undefined || inrAmount === null) return {};
+  const amount = Number(inrAmount);
+  if (amount <= 0) return {};
+
   const prices = {};
   for (const [curr, divisor] of Object.entries(FX_DIVISORS)) {
     if (curr === 'INR') {
-      prices[curr] = inrAmount;
+      prices[curr] = amount;
     } else if (curr === 'JPY') {
-      // JPY clean round to nearest hundred
-      prices[curr] = Math.round(inrAmount / divisor / 100) * 100;
+      // JPY: If amount > 0, at least ¥100 for zero-decimal minimum, clean rounded to hundreds
+      prices[curr] = Math.max(100, Math.round(amount / divisor / 100) * 100);
     } else {
-      prices[curr] = Math.round(inrAmount / divisor);
+      // USD, EUR, GBP, AED, CAD, AUD, SGD:
+      // If amount > 0, at least 1 unit so payment gateway can charge real money
+      prices[curr] = Math.max(1, Math.round(amount / divisor));
     }
   }
   return prices;
@@ -113,7 +118,10 @@ function computeMultiCurrencyPrices(inrAmount) {
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-  res.setHeader('Cache-Control', 's-maxage=10, stale-while-revalidate=30');
+  // Disable all caching so admin updates reflect in real time for public visitors
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method Not Allowed' });

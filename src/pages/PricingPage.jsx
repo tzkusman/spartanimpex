@@ -70,7 +70,7 @@ export default function PricingPage() {
   useEffect(() => {
     const fetchPlans = async () => {
       try {
-        const res = await fetch('/api/pricing');
+        const res = await fetch(`/api/pricing?_t=${Date.now()}`);
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data) && data.length > 0) {
@@ -86,11 +86,14 @@ export default function PricingPage() {
     fetchPlans();
   }, []);
 
-  // Helper to get localized price for a plan (prioritizing live DB prices)
+  // Helper to get localized price for a plan (prioritizing live DB prices with type-safety)
   const getPlanPrice = (planSlug) => {
     const livePlan = plans.find((p) => p.slug === planSlug);
-    if (livePlan && livePlan.prices && livePlan.prices[currency]) {
+    if (livePlan && livePlan.prices && typeof livePlan.prices[currency] === 'number') {
       return livePlan.prices[currency];
+    }
+    if (livePlan && currency === 'INR' && typeof livePlan.price === 'number') {
+      return livePlan.price;
     }
     const matrix = PLAN_PRICING_MATRIX[planSlug];
     if (matrix && matrix[currency]) {
@@ -101,8 +104,11 @@ export default function PricingPage() {
 
   const getPlanOriginalPrice = (planSlug) => {
     const livePlan = plans.find((p) => p.slug === planSlug);
-    if (livePlan && livePlan.originalPrices && livePlan.originalPrices[currency]) {
+    if (livePlan && livePlan.originalPrices && typeof livePlan.originalPrices[currency] === 'number') {
       return livePlan.originalPrices[currency];
+    }
+    if (livePlan && currency === 'INR' && typeof livePlan.originalPrice === 'number') {
+      return livePlan.originalPrice;
     }
     const matrix = PLAN_PRICING_MATRIX[planSlug];
     if (matrix && matrix[currency]) {

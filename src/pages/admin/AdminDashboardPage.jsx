@@ -48,10 +48,10 @@ const PREVIEW_FX_DIVISORS = {
 };
 
 function getPreviewConvertedPrice(inrAmount, curr) {
-  if (!inrAmount) return 0;
+  if (!inrAmount || inrAmount <= 0) return 0;
   const div = PREVIEW_FX_DIVISORS[curr] || 75.37;
-  if (curr === 'JPY') return Math.round(inrAmount / div / 100) * 100;
-  return Math.round(inrAmount / div);
+  if (curr === 'JPY') return Math.max(100, Math.round(inrAmount / div / 100) * 100);
+  return Math.max(1, Math.round(inrAmount / div));
 }
 
 export default function AdminDashboardPage() {
@@ -173,7 +173,7 @@ export default function AdminDashboardPage() {
       }
 
       // 4. Live Pricing Plans from database
-      const priceRes = await fetch('/api/admin/pricing', { headers: getAuthHeaders(authToken) });
+      const priceRes = await fetch(`/api/admin/pricing?_t=${Date.now()}`, { headers: getAuthHeaders(authToken) });
       if (priceRes.ok) {
         const priceData = await priceRes.json();
         setPricingPlans(priceData.plans || []);

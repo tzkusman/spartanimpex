@@ -40,9 +40,11 @@ const FALLBACK_PLANS = {
 function calculatePriceInCurrency(inrAmount, currencyCode) {
   const code = String(currencyCode || 'USD').toUpperCase();
   const divisor = FX_DIVISORS[code] || FX_DIVISORS['USD'];
-  if (code === 'INR') return inrAmount;
-  if (code === 'JPY') return Math.round(inrAmount / divisor / 100) * 100;
-  return Math.round(inrAmount / divisor);
+  const amt = Number(inrAmount) || 0;
+  if (amt <= 0) return 0;
+  if (code === 'INR') return amt;
+  if (code === 'JPY') return Math.max(100, Math.round(amt / divisor / 100) * 100);
+  return Math.max(1, Math.round(amt / divisor));
 }
 
 export default async function handler(req, res) {
@@ -99,14 +101,14 @@ export default async function handler(req, res) {
     }
 
     // 2. Determine real live price in requested currency
-    const inrBasePrice = planData.price || 14999;
+    const inrBasePrice = planData.price !== undefined ? planData.price : 14999;
     const unitPrice = calculatePriceInCurrency(inrBasePrice, requestedCurrency);
 
     // 3. Razorpay Subunit Calculation
-    // JPY: exact amount (zero-decimal)
-    // USD, EUR, GBP, INR, etc.: multiply by 100
+    // JPY: exact amount (zero-decimal, min 100)
+    // USD, EUR, GBP, INR, etc.: multiply by 100 (min 100 cents/paise)
     const isZeroDecimal = ZERO_DECIMAL_CURRENCIES.includes(requestedCurrency);
-    const amountInSubunit = isZeroDecimal ? Math.round(unitPrice) : Math.round(unitPrice * 100);
+    const amountInSubunit = isZeroDecimal ? Math.max(100, Math.round(unitPrice)) : Math.max(100, Math.round(unitPrice * 100));
 
     const key_id = process.env.RAZORPAY_KEY_ID;
     const key_secret = process.env.RAZORPAY_KEY_SECRET;
