@@ -83,12 +83,15 @@ export default function AboutPage() {
               <div className="mt-8 flex flex-wrap items-center gap-4">
                 <Button
                   href={personalData.resumeUrl}
+                  download="Spartan-Impex-Company-Portfolio.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   variant="primary"
                   size="md"
                   icon={Download}
                   iconPosition="left"
                 >
-                  Download Curriculum Vitae
+                  Download Company Portfolio (PDF)
                 </Button>
                 <Button
                   to="/contact"
@@ -340,23 +343,26 @@ export default function AboutPage() {
           <div className="bg-navy p-8 sm:p-10 rounded-3xl border border-navy-border flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
             <div>
               <span className="text-xs uppercase tracking-widest font-semibold text-cyan">
-                CURRICULUM VITAE
+                OFFICIAL PRESENTATION
               </span>
               <h3 className="text-2xl sm:text-3xl font-serif font-medium text-white mt-1">
-                Download My Official Resume
+                Download Official Company Portfolio
               </h3>
               <p className="text-sm text-navy-200 mt-1">
-                Detailed print-ready summary of technical skills, employment track record, and references.
+                Comprehensive enterprise overview covering engineering philosophy, leadership, 10 core service disciplines, and client case studies.
               </p>
             </div>
             <Button
               href={personalData.resumeUrl}
+              download="Spartan-Impex-Company-Portfolio.pdf"
+              target="_blank"
+              rel="noopener noreferrer"
               variant="primary"
               size="md"
               icon={Download}
               iconPosition="left"
             >
-              Download CV (PDF)
+              Download Presentation (PDF)
             </Button>
           </div>
         </Container>

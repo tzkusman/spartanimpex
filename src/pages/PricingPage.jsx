@@ -31,6 +31,8 @@ import {
   formatCurrencyAmount,
   detectVisitorDefaultCurrency
 } from '../utils/currency';
+import { printAuditReport } from '../utils/auditReport';
+import { Download } from 'lucide-react';
 
 export default function PricingPage() {
   const [plans, setPlans] = useState(pricingPlansData);
@@ -660,6 +662,26 @@ export default function PricingPage() {
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      printAuditReport({
+                        orderId: paymentSuccess.orderId,
+                        paymentId: paymentSuccess.paymentId,
+                        customerName: paymentSuccess.customer.name,
+                        customerEmail: paymentSuccess.customer.email,
+                        customerPhone: paymentSuccess.customer.phone,
+                        planName: paymentSuccess.plan.name,
+                        amount: paymentSuccess.amount,
+                        currency: paymentSuccess.currency,
+                        status: 'PAID',
+                      })
+                    }
+                    className="py-3 px-5 rounded-xl bg-navy border border-cyan-DEFAULT/50 text-cyan-DEFAULT font-bold text-xs uppercase tracking-wider hover:bg-cyan-DEFAULT hover:text-navy-dark transition-all flex items-center justify-center gap-2 shadow-lg"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Print Tax Receipt & Audit Record</span>
+                  </button>
                   <Link
                     to="/contact"
                     className="py-3 px-5 rounded-xl bg-cyan-DEFAULT text-navy-dark font-bold text-xs uppercase tracking-wider hover:bg-cyan-300 transition-all flex items-center justify-center gap-2 shadow-lg"

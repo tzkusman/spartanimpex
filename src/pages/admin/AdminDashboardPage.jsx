@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import logoImg from '../../assets/spartan-logo.png';
 import { formatCurrencyAmount, SUPPORTED_CURRENCIES } from '../../utils/currency';
+import { printAuditReport } from '../../utils/auditReport';
 
 // Divisors for calculating preview rates from base INR
 const PREVIEW_FX_DIVISORS = {
@@ -1086,12 +1087,23 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            <button
-              onClick={() => setSelectedTransaction(null)}
-              className="w-full py-3.5 rounded-xl bg-navy border border-navy-border text-white text-xs font-bold hover:bg-navy-card transition-colors uppercase tracking-wider"
-            >
-              Close Record
-            </button>
+            <div className="space-y-2 pt-2">
+              <button
+                type="button"
+                onClick={() => printAuditReport(selectedTransaction)}
+                className="w-full py-3.5 rounded-xl bg-cyan-DEFAULT text-navy-dark text-xs font-black hover:bg-cyan-300 transition-all uppercase tracking-wider flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,229,255,0.3)]"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>Print Statutory Audit Certificate & Tax Invoice</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedTransaction(null)}
+                className="w-full py-3 rounded-xl bg-navy border border-navy-border text-white text-xs font-bold hover:bg-navy-card transition-colors uppercase tracking-wider"
+              >
+                Close Record
+              </button>
+            </div>
           </div>
         </div>
       )}

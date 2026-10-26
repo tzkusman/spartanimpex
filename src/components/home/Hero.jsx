@@ -94,7 +94,16 @@ export default function Hero() {
               <Button to="/projects" variant="primary" size="md" icon={ArrowRight} iconPosition="right" className="shadow-md">
                 View Our Projects
               </Button>
-              <Button href={personalData.resumeUrl} variant="secondary" size="md" icon={Download} iconPosition="left">
+              <Button
+                href={personalData.resumeUrl}
+                download="Spartan-Impex-Company-Portfolio.pdf"
+                target="_blank"
+                rel="noopener noreferrer"
+                variant="secondary"
+                size="md"
+                icon={Download}
+                iconPosition="left"
+              >
                 Download Portfolio
               </Button>
             </div>
