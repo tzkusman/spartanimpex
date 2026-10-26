@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import Razorpay from 'razorpay';
 import prisma from './prisma.js';
-import { pricingPlansData } from '../../src/data/portfolioData.js';
+import { pricingPlansData } from './plans.js';
 
 dotenv.config();
 
@@ -456,30 +456,16 @@ app.post('/api/payment/create-order', async (req, res) => {
     }
 
     // Fetch plan from database with graceful fallback to predefined portfolio data
-    let plan = await prisma.pricingPlan.findUnique({ where: { slug: planSlug } });
-    if (!plan && Array.isArray(pricingPlansData)) {
-      const fallbackPlan = pricingPlansData.find(p => p.slug === planSlug);
-      if (fallbackPlan) {
-        try {
-          plan = await prisma.pricingPlan.create({
-            data: {
-              slug: fallbackPlan.slug,
-              name: fallbackPlan.name,
-              price: fallbackPlan.price,
-              originalPrice: fallbackPlan.originalPrice,
-              badge: fallbackPlan.badge,
-              description: fallbackPlan.description,
-              features: fallbackPlan.features,
-              deliverables: fallbackPlan.deliverables,
-              popular: fallbackPlan.popular,
-              active: fallbackPlan.active,
-              sortOrder: fallbackPlan.sortOrder,
-            },
-          });
-        } catch {
-          plan = fallbackPlan;
-        }
+    let plan = null;
+    if (prisma) {
+      try {
+        plan = await prisma.pricingPlan.findUnique({ where: { slug: planSlug } });
+      } catch (dbErr) {
+        console.warn('⚠️ Prisma plan lookup warning:', dbErr.message);
       }
+    }
+    if (!plan && Array.isArray(pricingPlansData)) {
+      plan = pricingPlansData.find(p => p.slug === planSlug);
     }
 
     if (!plan) {
@@ -512,7 +498,10 @@ app.post('/api/payment/create-order', async (req, res) => {
         isLiveRazorpay = true;
       } catch (rzpErr) {
         console.error('Razorpay API order creation failed:', rzpErr);
-        const description = rzpErr.error?.description || rzpErr.message || 'Razorpay order creation rejected.';
+        let description = rzpErr.error?.description || rzpErr.message;
+        if (rzpErr.statusCode === 406 || !description) {
+          description = 'Razorpay Live API returned 406. Ensure your Razorpay account KYC is fully activated for live transactions, or switch to Razorpay Test Key (rzp_test_...) in your dashboard.';
+        }
         return res.status(502).json({ error: `Razorpay Gateway Error: ${description}` });
       }
     } else {
@@ -522,20 +511,27 @@ app.post('/api/payment/create-order', async (req, res) => {
     }
 
     // Save initial transaction record in PostgreSQL with PENDING status
-    const transaction = await prisma.paymentTransaction.create({
-      data: {
-        orderId,
-        planSlug: plan.slug,
-        planName: plan.name,
-        amount: plan.price,
-        currency: 'INR',
-        customerName: customerName.trim(),
-        customerEmail: customerEmail.trim().toLowerCase(),
-        customerPhone: customerPhone ? customerPhone.trim() : null,
-        status: 'PENDING',
-        receipt,
-      },
-    });
+    let transaction = null;
+    if (prisma) {
+      try {
+        transaction = await prisma.paymentTransaction.create({
+          data: {
+            orderId,
+            planSlug: plan.slug,
+            planName: plan.name,
+            amount: plan.price,
+            currency: 'INR',
+            customerName: customerName.trim(),
+            customerEmail: customerEmail.trim().toLowerCase(),
+            customerPhone: customerPhone ? customerPhone.trim() : null,
+            status: 'PENDING',
+            receipt,
+          },
+        });
+      } catch (txErr) {
+        console.warn('⚠️ Could not save pending transaction to DB:', txErr.message);
+      }
+    }
 
     res.json({
       success: true,
@@ -553,7 +549,7 @@ app.post('/api/payment/create-order', async (req, res) => {
         email: customerEmail,
         phone: customerPhone,
       },
-      transactionId: transaction.id,
+      transactionId: transaction ? transaction.id : null,
       isLiveRazorpay,
     });
   } catch (error) {

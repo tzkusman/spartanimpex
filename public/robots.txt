@@ -1,0 +1,12 @@
+# ==========================================
+# Spartan Impax - Robots & Crawler Directives
+# ==========================================
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /admin/*
+Disallow: /api/*
+
+# Host & Sitemap Location
+Host: https://www.spartanimpex.com
+Sitemap: https://www.spartanimpex.com/sitemap.xml

@@ -117,7 +117,15 @@ export default function PricingPage() {
         }),
       });
 
-      const orderData = await res.json();
+      let orderData;
+      const resText = await res.text();
+      try {
+        orderData = JSON.parse(resText);
+      } catch {
+        throw new Error(resText.includes('FUNCTION_INVOCATION_FAILED')
+          ? 'Payment service is initializing on server. Please ensure DATABASE_URL and RAZORPAY keys are configured on Vercel.'
+          : (resText || 'Failed to communicate with payment gateway.'));
+      }
       if (!res.ok) {
         throw new Error(orderData.error || 'Failed to initiate checkout order.');
       }

@@ -5,6 +5,7 @@ import Footer from './components/common/Footer';
 import ScrollToTop from './components/common/ScrollToTop';
 import CyberItCursor from './components/common/CyberItCursor';
 import VisitorTracker from './components/common/VisitorTracker';
+import SeoHead from './components/common/SeoHead';
 
 import HomePage from './pages/HomePage';
 import AboutPage from './pages/AboutPage';
@@ -31,6 +32,8 @@ export default function App() {
 
       {/* Global Real-time Visitor Telemetry */}
       <VisitorTracker />
+      {/* Dynamic Multi-Page SEO & Social Meta Updater */}
+      <SeoHead />
 
       <ScrollToTop />
 

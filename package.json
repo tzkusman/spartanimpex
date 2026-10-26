@@ -5,16 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "prisma generate --schema=server/prisma/schema.prisma && vite build",
+    "build": "prisma generate && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
     "server": "npm --prefix server run dev",
     "server:seed": "npm --prefix server run db:seed",
     "server:push": "npm --prefix server run db:push",
-    "server:studio": "npm --prefix server run db:studio"
+    "server:studio": "npm --prefix server run db:studio",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@prisma/client": "^6.4.1",
+    "@prisma/client": "6.4.1",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^18.0.8",
