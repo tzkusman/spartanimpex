@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import Razorpay from 'razorpay';
 import prisma from './prisma.js';
+import { pricingPlansData } from '../../src/data/portfolioData.js';
 
 dotenv.config();
 
@@ -15,7 +16,12 @@ const JWT_SECRET = process.env.JWT_SECRET || 'spartan_impax_jwt_super_secret_202
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
+app.use(express.urlencoded({ extended: true }));
 
 // Request Logger
 app.use((req, res, next) => {
@@ -430,20 +436,17 @@ app.delete('/api/admin/pricing/:id', requireAdmin, async (req, res) => {
 // 7. RAZORPAY PRODUCTION PAYMENTS
 // ==========================================
 
-// Initialize Razorpay client
-let razorpayClient = null;
-if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
-  try {
-    razorpayClient = new Razorpay({
-      key_id: process.env.RAZORPAY_KEY_ID,
-      key_secret: process.env.RAZORPAY_KEY_SECRET,
-    });
-  } catch (err) {
-    console.warn('Razorpay init warning:', err.message);
+// Helper to retrieve live or test Razorpay client instance
+function getRazorpayClient() {
+  const key_id = process.env.RAZORPAY_KEY_ID;
+  const key_secret = process.env.RAZORPAY_KEY_SECRET;
+  if (!key_id || !key_secret || key_id.includes('placeholder') || key_id.includes('your_key_id') || key_id.includes('demoKey')) {
+    return null;
   }
+  return new Razorpay({ key_id, key_secret });
 }
 
-// POST /api/payment/create-order
+// POST /api/payment/create-order - Create Razorpay payment order
 app.post('/api/payment/create-order', async (req, res) => {
   try {
     const { planSlug, customerName, customerEmail, customerPhone } = req.body;
@@ -452,38 +455,73 @@ app.post('/api/payment/create-order', async (req, res) => {
       return res.status(400).json({ error: 'Name and email are required for checkout.' });
     }
 
-    // Fetch plan from database
-    const plan = await prisma.pricingPlan.findUnique({ where: { slug: planSlug } });
+    // Fetch plan from database with graceful fallback to predefined portfolio data
+    let plan = await prisma.pricingPlan.findUnique({ where: { slug: planSlug } });
+    if (!plan && Array.isArray(pricingPlansData)) {
+      const fallbackPlan = pricingPlansData.find(p => p.slug === planSlug);
+      if (fallbackPlan) {
+        try {
+          plan = await prisma.pricingPlan.create({
+            data: {
+              slug: fallbackPlan.slug,
+              name: fallbackPlan.name,
+              price: fallbackPlan.price,
+              originalPrice: fallbackPlan.originalPrice,
+              badge: fallbackPlan.badge,
+              description: fallbackPlan.description,
+              features: fallbackPlan.features,
+              deliverables: fallbackPlan.deliverables,
+              popular: fallbackPlan.popular,
+              active: fallbackPlan.active,
+              sortOrder: fallbackPlan.sortOrder,
+            },
+          });
+        } catch {
+          plan = fallbackPlan;
+        }
+      }
+    }
+
     if (!plan) {
-      return res.status(404).json({ error: 'Selected plan not found.' });
+      return res.status(404).json({ error: 'Selected architecture package not found.' });
     }
 
     const receipt = `rcpt_${Date.now().toString().slice(-8)}`;
-    const amountInPaise = plan.price * 100; // Razorpay operates in paise
+    const amountInPaise = Math.round(plan.price * 100); // Razorpay operates in paise (1 INR = 100 paise)
 
-    let orderId = `order_${Date.now()}`;
+    const rzp = getRazorpayClient();
+    let orderId;
     let isLiveRazorpay = false;
 
-    // Call real Razorpay API if live/test keys are present
-    if (razorpayClient && !process.env.RAZORPAY_KEY_ID.includes('demoKey')) {
+    // Call real Razorpay API if live/test credentials are present
+    if (rzp) {
       try {
-        const rzpOrder = await razorpayClient.orders.create({
+        const rzpOrder = await rzp.orders.create({
           amount: amountInPaise,
           currency: 'INR',
           receipt,
           notes: {
             planName: plan.name,
-            customerEmail,
+            planSlug: plan.slug,
+            customerName: customerName.trim(),
+            customerEmail: customerEmail.trim().toLowerCase(),
+            customerPhone: customerPhone ? customerPhone.trim() : 'N/A',
           },
         });
         orderId = rzpOrder.id;
         isLiveRazorpay = true;
       } catch (rzpErr) {
-        console.warn('Real Razorpay call warning, generating fallback order:', rzpErr.message);
+        console.error('Razorpay API order creation failed:', rzpErr);
+        const description = rzpErr.error?.description || rzpErr.message || 'Razorpay order creation rejected.';
+        return res.status(502).json({ error: `Razorpay Gateway Error: ${description}` });
       }
+    } else {
+      // Local fallback simulation when real keys are not configured yet
+      console.warn('⚠️ Razorpay keys not configured. Simulating order ID for local testing.');
+      orderId = `order_sim_${Date.now()}`;
     }
 
-    // Save pending transaction in Prisma PostgreSQL
+    // Save initial transaction record in PostgreSQL with PENDING status
     const transaction = await prisma.paymentTransaction.create({
       data: {
         orderId,
@@ -524,32 +562,38 @@ app.post('/api/payment/create-order', async (req, res) => {
   }
 });
 
-// POST /api/payment/verify-payment
+// POST /api/payment/verify-payment - Cryptographic HMAC SHA-256 verification
 app.post('/api/payment/verify-payment', async (req, res) => {
   try {
     const { orderId, paymentId, signature, paymentMethod } = req.body;
 
     if (!orderId || !paymentId) {
-      return res.status(400).json({ error: 'Order ID and Payment ID required.' });
+      return res.status(400).json({ error: 'Order ID and Payment ID are required.' });
     }
 
-    // If real keys provided, verify signature
-    if (signature && process.env.RAZORPAY_KEY_SECRET && !process.env.RAZORPAY_KEY_SECRET.includes('demoSecret')) {
-      const hmac = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET);
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    const isRealSecret = keySecret && !keySecret.includes('demoSecret') && !keySecret.includes('placeholder');
+
+    // Strict HMAC SHA-256 signature verification for real Razorpay checkouts
+    if (isRealSecret) {
+      if (!signature) {
+        return res.status(400).json({ error: 'Payment signature missing from checkout response.' });
+      }
+      const hmac = crypto.createHmac('sha256', keySecret);
       hmac.update(`${orderId}|${paymentId}`);
       const generatedSignature = hmac.digest('hex');
 
       if (generatedSignature !== signature) {
-        // Mark failed
+        // Mark transaction as FAILED on signature mismatch
         await prisma.paymentTransaction.updateMany({
           where: { orderId },
           data: { status: 'FAILED' },
         });
-        return res.status(400).json({ error: 'Payment signature verification failed.' });
+        return res.status(400).json({ error: 'Payment signature verification failed. Possible payload tampering.' });
       }
     }
 
-    // Mark transaction as PAID
+    // Mark transaction as PAID in PostgreSQL
     const updated = await prisma.paymentTransaction.update({
       where: { orderId },
       data: {
@@ -560,7 +604,7 @@ app.post('/api/payment/verify-payment', async (req, res) => {
       },
     });
 
-    console.log(`💰 Verified Payment of ₹${updated.amount} for ${updated.planName} by ${updated.customerEmail}`);
+    console.log(`💰 Verified Payment of ₹${updated.amount} for ${updated.planName} by ${updated.customerEmail} (ID: ${paymentId})`);
 
     res.json({
       success: true,
@@ -570,6 +614,56 @@ app.post('/api/payment/verify-payment', async (req, res) => {
   } catch (error) {
     console.error('Payment verification error:', error);
     res.status(500).json({ error: 'Failed to verify payment.' });
+  }
+});
+
+// POST /api/payment/webhook - Razorpay Asynchronous Event Listener
+app.post('/api/payment/webhook', async (req, res) => {
+  try {
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    const signature = req.headers['x-razorpay-signature'];
+
+    if (webhookSecret && signature) {
+      const rawPayload = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body);
+      const expectedSignature = crypto
+        .createHmac('sha256', webhookSecret)
+        .update(rawPayload)
+        .digest('hex');
+
+      if (signature !== expectedSignature) {
+        console.warn('⚠️ Razorpay webhook signature mismatch.');
+        return res.status(400).json({ error: 'Invalid webhook signature.' });
+      }
+    }
+
+    const event = req.body?.event;
+    const payload = req.body?.payload;
+
+    console.log(`📩 Razorpay Webhook Event Received: ${event}`);
+
+    if (event === 'payment.captured' || event === 'order.paid') {
+      const paymentEntity = payload?.payment?.entity;
+      const orderId = paymentEntity?.order_id;
+      const paymentId = paymentEntity?.id;
+      const method = paymentEntity?.method || 'Razorpay Webhook';
+
+      if (orderId) {
+        await prisma.paymentTransaction.updateMany({
+          where: { orderId, status: { not: 'PAID' } },
+          data: {
+            status: 'PAID',
+            paymentId: paymentId || undefined,
+            paymentMethod: `Razorpay (${method})`,
+          },
+        });
+        console.log(`✅ Webhook auto-confirmed payment for order ${orderId} (${paymentId})`);
+      }
+    }
+
+    res.json({ status: 'ok' });
+  } catch (err) {
+    console.error('Webhook error:', err);
+    res.status(500).json({ error: 'Webhook processing error' });
   }
 });
 
@@ -796,9 +890,11 @@ app.get('/', (req, res) => {
   });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Spartan Impax Backend running on http://localhost:${PORT}`);
-  console.log(`🔐 Admin auth active for: gajender@spartanimpex.com`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Spartan Impax Backend running on http://localhost:${PORT}`);
+    console.log(`🔐 Admin auth active for: gajender@spartanimpex.com`);
+  });
+}
 
 export default app;

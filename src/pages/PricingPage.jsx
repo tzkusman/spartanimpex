@@ -56,18 +56,30 @@ export default function PricingPage() {
     fetchPlans();
   }, []);
 
-  // Dynamically load Razorpay checkout script
+  // Dynamically load official Razorpay checkout SDK with safety timeout
   const loadRazorpayScript = () => {
     return new Promise((resolve) => {
-      if (window.Razorpay) {
+      if (typeof window !== 'undefined' && window.Razorpay) {
         return resolve(true);
       }
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.async = true;
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
+      const existing = document.getElementById('razorpay-checkout-sdk');
+      if (existing) {
+        if (window.Razorpay) return resolve(true);
+        existing.addEventListener('load', () => resolve(true));
+      } else {
+        const script = document.createElement('script');
+        script.id = 'razorpay-checkout-sdk';
+        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        script.async = true;
+        script.onload = () => resolve(true);
+        script.onerror = () => resolve(false);
+        document.body.appendChild(script);
+      }
+
+      setTimeout(() => {
+        if (window.Razorpay) resolve(true);
+        else resolve(false);
+      }, 10000);
     });
   };
 
@@ -110,7 +122,11 @@ export default function PricingPage() {
         throw new Error(orderData.error || 'Failed to initiate checkout order.');
       }
 
-      // Step 2: Configure Razorpay Checkout options
+      // Step 2: Validate Gateway Readiness & Configure Options
+      if (!orderData.keyId || orderData.keyId.includes('placeholder')) {
+        throw new Error('Razorpay API Key ID is not configured on the server. Please add your RAZORPAY_KEY_ID in .env or Vercel Environment Variables.');
+      }
+
       const options = {
         key: orderData.keyId,
         amount: orderData.amount,
