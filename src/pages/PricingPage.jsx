@@ -8,36 +8,40 @@ import {
   Zap,
   CreditCard,
   Lock,
-  HelpCircle,
-  Phone,
-  Mail,
+  ChevronDown,
   CheckCircle2,
   AlertCircle,
   Loader2,
-  ExternalLink,
-  ChevronDown,
-  Building2,
-  Layers,
-  Code,
-  Globe
+  Download,
+  X
 } from 'lucide-react';
 import Container from '../components/common/Container';
-import SectionHeading from '../components/common/SectionHeading';
-import Button from '../components/common/Button';
-import { pricingPlansData, personalData } from '../data/portfolioData';
-import {
-  SUPPORTED_CURRENCIES,
-  PLAN_PRICING_MATRIX,
-  formatCurrencyAmount,
-  detectVisitorDefaultCurrency
-} from '../utils/currency';
+import { pricingPlansData } from '../data/portfolioData';
 import { printAuditReport } from '../utils/auditReport';
-import { Download } from 'lucide-react';
+
+const PRICING_CACHE_KEY = 'spartan_live_pricing_plans_usd';
+
+// Synchronous initial state resolution: guarantees 0ms paint with latest admin prices
+function getInitialPlans() {
+  if (typeof window !== 'undefined') {
+    try {
+      const cached = localStorage.getItem(PRICING_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (err) {
+      console.warn('Failed reading cached pricing plans:', err);
+    }
+  }
+  return pricingPlansData;
+}
 
 export default function PricingPage() {
-  const [plans, setPlans] = useState(pricingPlansData);
-  const [loading, setLoading] = useState(true);
-  const [currency, setCurrency] = useState('USD');
+  const [plans, setPlans] = useState(getInitialPlans);
+  const [loading, setLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '', phone: '' });
@@ -46,77 +50,47 @@ export default function PricingPage() {
   const [paymentSuccess, setPaymentSuccess] = useState(null);
   const [openFaq, setOpenFaq] = useState(null);
 
-  // 1. Detect visitor country & preferred currency automatically
+  // Silent background revalidation: checks PostgreSQL for any admin updates
   useEffect(() => {
     let isMounted = true;
-    fetch('/api/geo')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!isMounted) return;
-        if (data && data.currency && SUPPORTED_CURRENCIES[data.currency]) {
-          setCurrency(data.currency);
-        } else {
-          setCurrency(detectVisitorDefaultCurrency());
+    const fetchPlans = async () => {
+      try {
+        const res = await fetch(`/api/pricing?_t=${Date.now()}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0 && isMounted) {
+            setPlans(data);
+            try {
+              localStorage.setItem(PRICING_CACHE_KEY, JSON.stringify(data));
+            } catch (storageErr) {
+              console.warn('Could not cache pricing plans:', storageErr);
+            }
+          }
         }
-      })
-      .catch(() => {
-        if (isMounted) setCurrency(detectVisitorDefaultCurrency());
-      });
+      } catch (err) {
+        console.warn('Using existing cached pricing plans:', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+    fetchPlans();
 
     return () => {
       isMounted = false;
     };
   }, []);
 
-  // 2. Fetch dynamic plans from database if available
-  useEffect(() => {
-    const fetchPlans = async () => {
-      try {
-        const res = await fetch(`/api/pricing?_t=${Date.now()}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data) && data.length > 0) {
-            setPlans(data);
-          }
-        }
-      } catch (err) {
-        console.warn('Using local fallback pricing plans', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchPlans();
-  }, []);
-
-  // Helper to get localized price for a plan (prioritizing live DB prices with type-safety)
-  const getPlanPrice = (planSlug) => {
-    const livePlan = plans.find((p) => p.slug === planSlug);
-    if (livePlan && livePlan.prices && typeof livePlan.prices[currency] === 'number') {
-      return livePlan.prices[currency];
-    }
-    if (livePlan && currency === 'INR' && typeof livePlan.price === 'number') {
-      return livePlan.price;
-    }
-    const matrix = PLAN_PRICING_MATRIX[planSlug];
-    if (matrix && matrix[currency]) {
-      return matrix[currency].price;
-    }
-    return livePlan ? livePlan.price : 14999;
+  // Direct USD price getters
+  const getPlanPrice = (plan) => {
+    if (plan && typeof plan.price === 'number') return plan.price;
+    return 199;
   };
 
-  const getPlanOriginalPrice = (planSlug) => {
-    const livePlan = plans.find((p) => p.slug === planSlug);
-    if (livePlan && livePlan.originalPrices && typeof livePlan.originalPrices[currency] === 'number') {
-      return livePlan.originalPrices[currency];
+  const getPlanOriginalPrice = (plan) => {
+    if (plan && typeof plan.originalPrice === 'number' && plan.originalPrice > plan.price) {
+      return plan.originalPrice;
     }
-    if (livePlan && currency === 'INR' && typeof livePlan.originalPrice === 'number') {
-      return livePlan.originalPrice;
-    }
-    const matrix = PLAN_PRICING_MATRIX[planSlug];
-    if (matrix && matrix[currency]) {
-      return matrix[currency].originalPrice;
-    }
-    return livePlan ? livePlan.originalPrice : null;
+    return null;
   };
 
   // Dynamically load official Razorpay checkout SDK
@@ -168,9 +142,9 @@ export default function PricingPage() {
         throw new Error('Razorpay SDK failed to load. Please check your internet connection.');
       }
 
-      const activePrice = getPlanPrice(selectedPlan.slug);
+      const activePrice = getPlanPrice(selectedPlan);
 
-      // Step 1: Create Order on backend with requested currency
+      // Step 1: Create Order on backend locked to USD
       const res = await fetch('/api/payment/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -179,7 +153,7 @@ export default function PricingPage() {
           customerName: formData.name,
           customerEmail: formData.email,
           customerPhone: formData.phone,
-          currency: currency,
+          currency: 'USD',
         }),
       });
 
@@ -205,9 +179,9 @@ export default function PricingPage() {
       const options = {
         key: orderData.keyId,
         amount: orderData.amount,
-        currency: orderData.currency || currency,
+        currency: 'USD',
         name: 'Spartan Impax Enterprise IT',
-        description: `${orderData.plan.name} Architecture Package (${orderData.currency || currency})`,
+        description: `${orderData.plan.name} Architecture Package ($USD)`,
         image: '/assets/spartan-logo.png',
         order_id: orderData.orderId,
         prefill: {
@@ -228,8 +202,8 @@ export default function PricingPage() {
                 orderId: orderData.orderId,
                 paymentId: response.razorpay_payment_id,
                 signature: response.razorpay_signature,
-                paymentMethod: 'Razorpay International Checkout',
-                currency: orderData.currency || currency,
+                paymentMethod: 'Razorpay Global USD Checkout',
+                currency: 'USD',
                 amount: activePrice,
               }),
             });
@@ -244,7 +218,7 @@ export default function PricingPage() {
               paymentId: response.razorpay_payment_id,
               plan: selectedPlan,
               amount: activePrice,
-              currency: orderData.currency || currency,
+              currency: 'USD',
               customer: formData,
             });
           } catch (vErr) {
@@ -276,20 +250,20 @@ export default function PricingPage() {
 
   const faqs = [
     {
-      q: 'Which international currencies and payment methods do you accept?',
-      a: 'We accept payments globally in USD ($), Japanese Yen (¥), Indian Rupee (₹), Euro (€), British Pound (£), UAE Dirham (AED), Canadian Dollar (CAD), and Australian Dollar (AUD). Checkout supports all international credit/debit cards (Visa, Mastercard, Amex), Apple Pay, Google Pay, UPI (in India), and major regional banks.'
+      q: 'Which payment methods do you accept?',
+      a: 'All invoices and milestone packages are billed globally in United States Dollars (USD $). We accept all international credit and debit cards (Visa, Mastercard, American Express), Apple Pay, Google Pay, and major regional banking networks via 256-bit SSL encrypted checkout.'
     },
     {
-      q: 'How does the Razorpay multi-currency checkout work?',
-      a: 'When you select your local currency, our system generates an authorized Razorpay order directly in your selected currency (e.g., $199 USD or ¥29,800 JPY). Your bank is billed without unexpected foreign transaction conversion charges.'
+      q: 'Are there any hidden recurring fees or monthly charges?',
+      a: 'Zero. Every package is a single engagement milestone payment with clear, upfront deliverables. There are no surprise monthly subscription renewals or hidden recurring invoices.'
     },
     {
       q: 'Can we adjust or customize deliverables after checkout?',
-      a: 'Yes. Every project package kicks off with a dedicated architectural discovery call with CIO Usman and CEO Gajender Singh. We customize technical specifications and milestones to match your exact enterprise scope.'
+      a: 'Yes. Every project package kicks off with a dedicated architectural discovery call with CIO Usman and CEO Gajender Singh Rajawat. We customize technical specifications and sprint milestones to match your exact enterprise scope.'
     },
     {
       q: 'Do you provide Non-Disclosure Agreements (NDA) and IP ownership?',
-      a: 'Absolutely. 100% of all intellectual property, source repositories, documentation, and cloud infrastructure keys belong exclusively to you upon project handover.'
+      a: 'Absolutely. 100% of all intellectual property, source code repositories, documentation, and cloud infrastructure keys belong exclusively to you upon project handover.'
     },
     {
       q: 'What is the standard turnaround time for deliverables?',
@@ -319,23 +293,14 @@ export default function PricingPage() {
             From high-conversion web platforms to mission-critical Oracle Cloud portals and Generative AI studios. Instant checkout powered by Razorpay Global.
           </p>
 
-          {/* Interactive Global Currency Switcher */}
-          <div className="inline-flex items-center gap-3 p-2 rounded-2xl bg-navy-card/90 border border-navy-border shadow-xl backdrop-blur-xl">
-            <div className="flex items-center gap-2 pl-3 text-silver-300 text-xs font-semibold uppercase tracking-wider">
-              <Globe className="w-4 h-4 text-cyan-DEFAULT" />
-              <span>Billing Currency:</span>
+          {/* Clean Global USD Currency Pill (Currency Switcher Hidden/Removed) */}
+          <div className="inline-flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-navy-card/90 border border-cyan-DEFAULT/30 shadow-xl backdrop-blur-xl">
+            <div className="flex items-center gap-2 text-silver-300 text-xs font-semibold uppercase tracking-wider">
+              <Shield className="w-4 h-4 text-cyan-DEFAULT" />
+              <span>Global Enterprise Pricing in USD ($)</span>
             </div>
-            <select
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-              className="px-4 py-2 rounded-xl bg-navy border border-cyan-DEFAULT/30 text-white text-xs font-bold focus:outline-none focus:border-cyan-DEFAULT cursor-pointer shadow-md transition-all hover:border-cyan-DEFAULT"
-            >
-              {Object.values(SUPPORTED_CURRENCIES).map((c) => (
-                <option key={c.code} value={c.code} className="bg-navy text-white py-1">
-                  {c.flag} {c.code} ({c.symbol.trim()}) - {c.name}
-                </option>
-              ))}
-            </select>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-emerald-400 text-xs font-mono font-bold">Razorpay Live</span>
           </div>
 
           {/* Trust badges */}
@@ -356,8 +321,8 @@ export default function PricingPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch mb-24">
           {plans.map((plan) => {
             const isPopular = plan.popular;
-            const currentPrice = getPlanPrice(plan.slug);
-            const originalPrice = getPlanOriginalPrice(plan.slug);
+            const currentPrice = getPlanPrice(plan);
+            const originalPrice = getPlanOriginalPrice(plan);
 
             return (
               <div
@@ -390,16 +355,16 @@ export default function PricingPage() {
                     {plan.description}
                   </p>
 
-                  {/* Price Block */}
+                  {/* Price Block - Zero Flicker USD Display */}
                   <div className="mb-6 p-4 rounded-2xl bg-navy/80 border border-navy-border/60">
                     <div className="flex items-baseline gap-2">
-                      <span className="text-sm font-semibold text-cyan-300">{currency}</span>
+                      <span className="text-sm font-semibold text-cyan-300">USD</span>
                       <span className="text-4xl font-black text-white tracking-tight">
-                        {formatCurrencyAmount(currentPrice, currency)}
+                        ${currentPrice.toLocaleString()}
                       </span>
                       {originalPrice && (
                         <span className="text-sm line-through text-silver-500 ml-1">
-                          {formatCurrencyAmount(originalPrice, currency)}
+                          ${originalPrice.toLocaleString()}
                         </span>
                       )}
                     </div>
@@ -432,7 +397,7 @@ export default function PricingPage() {
                         : 'border border-cyan/40 text-cyan-300 hover:bg-cyan hover:text-navy-dark hover:shadow-[0_0_25px_rgba(0,229,255,0.4)]'
                     }`}
                   >
-                    <span>Proceed in {currency}</span>
+                    <span>Proceed to Checkout (${currentPrice.toLocaleString()})</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                   <p className="text-center text-[11px] text-silver-500 mt-2 flex items-center justify-center gap-1">
@@ -517,7 +482,7 @@ export default function PricingPage() {
               className="absolute top-5 right-5 text-silver-400 hover:text-white p-2 rounded-xl hover:bg-navy border border-transparent hover:border-navy-border transition-colors"
               disabled={paymentLoading}
             >
-              ✕
+              <X className="w-5 h-5" />
             </button>
 
             {/* Modal Content */}
@@ -529,7 +494,7 @@ export default function PricingPage() {
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-white">Razorpay Secure Global Checkout</h3>
-                    <p className="text-xs text-silver-400">Order for: {selectedPlan.name} ({currency})</p>
+                    <p className="text-xs text-silver-400">Package: {selectedPlan.name} (USD $)</p>
                   </div>
                 </div>
 
@@ -541,17 +506,17 @@ export default function PricingPage() {
                       <h4 className="font-bold text-white text-base">{selectedPlan.name}</h4>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-silver-400">Total Investment ({currency})</p>
+                      <p className="text-xs text-silver-400">Total Investment (USD)</p>
                       <span className="text-xl font-black text-cyan-DEFAULT">
-                        {formatCurrencyAmount(getPlanPrice(selectedPlan.slug), currency)}
+                        ${getPlanPrice(selectedPlan).toLocaleString()}
                       </span>
                     </div>
                   </div>
                 </div>
 
                 {paymentError && (
-                  <div className="mb-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-start gap-3 text-rose-300 text-xs">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div className="p-4 mb-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
                     <span>{paymentError}</span>
                   </div>
                 )}
@@ -566,7 +531,7 @@ export default function PricingPage() {
                       required
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder="e.g., John Doe / Tanaka Taro"
+                      placeholder="e.g., John Doe"
                       className="w-full px-4 py-3 rounded-xl bg-navy border border-navy-border text-white text-sm focus:outline-none focus:border-cyan-DEFAULT focus:ring-1 focus:ring-cyan-DEFAULT transition-all"
                     />
                   </div>
@@ -613,7 +578,7 @@ export default function PricingPage() {
                       ) : (
                         <>
                           <Lock className="w-4 h-4" />
-                          <span>Pay {formatCurrencyAmount(getPlanPrice(selectedPlan.slug), currency)} with Razorpay</span>
+                          <span>Pay ${getPlanPrice(selectedPlan).toLocaleString()} USD with Razorpay</span>
                         </>
                       )}
                     </button>
@@ -622,7 +587,7 @@ export default function PricingPage() {
                   <div className="flex items-center justify-center gap-4 text-[11px] text-silver-400 pt-2">
                     <span>International Cards (Visa/MC/Amex)</span>
                     <span>•</span>
-                    <span>UPI & NetBanking</span>
+                    <span>Corporate Banking</span>
                     <span>•</span>
                     <span>SSL 256-bit</span>
                   </div>
@@ -656,7 +621,7 @@ export default function PricingPage() {
                   <div className="flex justify-between">
                     <span className="text-silver-400">Total Charged:</span>
                     <span className="font-bold text-white">
-                      {formatCurrencyAmount(paymentSuccess.amount, paymentSuccess.currency)}
+                      ${Number(paymentSuccess.amount).toLocaleString()} USD
                     </span>
                   </div>
                 </div>
@@ -673,7 +638,7 @@ export default function PricingPage() {
                         customerPhone: paymentSuccess.customer.phone,
                         planName: paymentSuccess.plan.name,
                         amount: paymentSuccess.amount,
-                        currency: paymentSuccess.currency,
+                        currency: 'USD',
                         status: 'PAID',
                       })
                     }

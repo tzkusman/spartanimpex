@@ -242,6 +242,18 @@ export default function AdminDashboardPage() {
 
       showToast(`Pricing for "${editingPlan.name}" updated live in database!`, 'success');
       setEditingPlan(null);
+
+      // Immediately sync local cache so /pricing displays new price with 0ms flicker
+      if (data.plan) {
+        const updatedPlans = pricingPlans.map(p => (p.id === data.plan.id || p.slug === data.plan.slug ? data.plan : p));
+        setPricingPlans(updatedPlans);
+        try {
+          localStorage.setItem('spartan_live_pricing_plans_usd', JSON.stringify(updatedPlans));
+        } catch (storageErr) {
+          console.warn('Local cache sync failed:', storageErr);
+        }
+      }
+
       fetchDashboardData(token, true);
     } catch (err) {
       showToast(err.message || 'Error updating plan pricing', 'error');
@@ -453,8 +465,8 @@ export default function AdminDashboardPage() {
               </div>
 
               <div className="flex items-center gap-2 text-xs text-silver-300 bg-navy px-4 py-2.5 rounded-xl border border-navy-border">
-                <Globe className="w-4 h-4 text-cyan-DEFAULT" />
-                <span>Auto-converts to USD, JPY, EUR, GBP, AED, CAD, AUD, SGD</span>
+                <DollarSign className="w-4 h-4 text-cyan-DEFAULT" />
+                <span>Direct USD ($) Pricing Controls • Live Database Sync</span>
               </div>
             </div>
 
@@ -505,30 +517,19 @@ export default function AdminDashboardPage() {
                       {/* Pricing Display */}
                       <div className="p-4 rounded-2xl bg-navy/90 border border-navy-border mb-5">
                         <div className="flex items-baseline gap-2">
-                          <span className="text-xs text-silver-400 font-semibold">Base INR:</span>
+                          <span className="text-xs text-silver-400 font-semibold">USD:</span>
                           <span className="text-2xl font-black text-white font-mono">
-                            ₹{inrPrice.toLocaleString('en-IN')}
+                            ${plan.price !== undefined ? Number(plan.price).toLocaleString() : '0'}
                           </span>
                           {plan.originalPrice && (
                             <span className="text-xs text-silver-500 line-through font-mono">
-                              ₹{plan.originalPrice.toLocaleString('en-IN')}
+                              ${Number(plan.originalPrice).toLocaleString()}
                             </span>
                           )}
                         </div>
-
-                        {/* Multi-currency preview row */}
-                        <div className="mt-3 pt-3 border-t border-navy-border/60">
-                          <span className="text-[10px] font-bold text-silver-400 uppercase tracking-wider block mb-2">
-                            Auto International Rates:
-                          </span>
-                          <div className="grid grid-cols-2 gap-1.5 text-[11px] font-mono">
-                            <span className="text-cyan-300">USD: ${getPreviewConvertedPrice(inrPrice, 'USD')}</span>
-                            <span className="text-cyan-300">JPY: ¥{getPreviewConvertedPrice(inrPrice, 'JPY').toLocaleString()}</span>
-                            <span className="text-cyan-300">EUR: €{getPreviewConvertedPrice(inrPrice, 'EUR')}</span>
-                            <span className="text-cyan-300">GBP: £{getPreviewConvertedPrice(inrPrice, 'GBP')}</span>
-                            <span className="text-cyan-300">AED: {getPreviewConvertedPrice(inrPrice, 'AED')} AED</span>
-                          </div>
-                        </div>
+                        <span className="text-[10px] text-cyan-400 mt-2 block font-medium">
+                          Live package price charged in USD ($) globally via Razorpay
+                        </span>
                       </div>
 
                       {/* Description */}
@@ -884,14 +885,14 @@ export default function AdminDashboardPage() {
             </div>
 
             <form onSubmit={handleSavePlan} className="space-y-4 text-xs">
-              {/* Base INR Price */}
+              {/* Package Price (USD $) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-silver-300 font-bold mb-1 uppercase tracking-wider text-[10px]">
-                    Base Price (INR) *
+                    Package Price (USD $) *
                   </label>
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-silver-400">₹</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-silver-400">$</span>
                     <input
                       type="number"
                       required
@@ -901,15 +902,15 @@ export default function AdminDashboardPage() {
                       className="w-full pl-8 pr-4 py-2.5 bg-navy text-white font-mono rounded-xl border border-navy-border focus:border-cyan-DEFAULT focus:outline-none"
                     />
                   </div>
-                  <span className="text-[10px] text-silver-500 mt-1 block">Live amount charged in checkout</span>
+                  <span className="text-[10px] text-silver-500 mt-1 block">Live amount billed to client in USD</span>
                 </div>
 
                 <div>
                   <label className="block text-silver-300 font-bold mb-1 uppercase tracking-wider text-[10px]">
-                    Original Price (INR Strikethrough)
+                    Original Price (USD $ Strikethrough)
                   </label>
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-silver-400">₹</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-silver-400">$</span>
                     <input
                       type="number"
                       min="0"
@@ -919,7 +920,7 @@ export default function AdminDashboardPage() {
                       className="w-full pl-8 pr-4 py-2.5 bg-navy text-white font-mono rounded-xl border border-navy-border focus:border-cyan-DEFAULT focus:outline-none"
                     />
                   </div>
-                  <span className="text-[10px] text-silver-500 mt-1 block">Shown crossed out for discount</span>
+                  <span className="text-[10px] text-silver-500 mt-1 block">Shown crossed out for discount in USD</span>
                 </div>
               </div>
 

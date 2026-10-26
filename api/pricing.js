@@ -1,25 +1,13 @@
 import 'dotenv/config';
 
-// Standard international currency exchange rate divisors against base INR
-const FX_DIVISORS = {
-  INR: 1,
-  USD: 75.37,
-  JPY: 0.503,
-  EUR: 81.07,
-  GBP: 94.33,
-  AED: 20.55,
-  CAD: 55.76,
-  AUD: 50.16,
-  SGD: 55.76,
-};
-
 const DEFAULT_PLANS = [
   {
     name: 'Starter Architecture',
     slug: 'starter-architecture',
-    price: 14999,
-    originalPrice: 24999,
+    price: 199,
+    originalPrice: 299,
     badge: 'Quick Launch',
+    currency: 'USD',
     description: 'Ideal for early-stage startups & SMBs needing architectural blueprint, API roadmap, and MVP system design.',
     features: [
       'Microservice & DB Schema Architecture Blueprint',
@@ -41,9 +29,10 @@ const DEFAULT_PLANS = [
   {
     name: 'Business Full-Stack Platform',
     slug: 'business-fullstack',
-    price: 49999,
-    originalPrice: 79999,
+    price: 649,
+    originalPrice: 999,
     badge: 'Most Popular Choice',
+    currency: 'USD',
     description: 'Comprehensive end-to-end full-stack engineering solution. Perfect for production web applications and portals.',
     features: [
       'Production-Ready React 19 / Next.js Frontend',
@@ -67,9 +56,10 @@ const DEFAULT_PLANS = [
   {
     name: 'Enterprise Custom Solution',
     slug: 'enterprise-custom',
-    price: 129999,
-    originalPrice: 199999,
+    price: 1699,
+    originalPrice: 2599,
     badge: 'Maximum Performance',
+    currency: 'USD',
     description: 'Bespoke high-scale engineering for large corporations, complex microservices, AI integration, and Oracle APEX migrations.',
     features: [
       'Full Custom Architecture & Multi-Tenant Database',
@@ -92,28 +82,6 @@ const DEFAULT_PLANS = [
     sortOrder: 3
   }
 ];
-
-// Helper to compute prices map for each currency with minimum 1 unit floor
-function computeMultiCurrencyPrices(inrAmount) {
-  if (inrAmount === undefined || inrAmount === null) return {};
-  const amount = Number(inrAmount);
-  if (amount <= 0) return {};
-
-  const prices = {};
-  for (const [curr, divisor] of Object.entries(FX_DIVISORS)) {
-    if (curr === 'INR') {
-      prices[curr] = amount;
-    } else if (curr === 'JPY') {
-      // JPY: If amount > 0, at least ¥100 for zero-decimal minimum, clean rounded to hundreds
-      prices[curr] = Math.max(100, Math.round(amount / divisor / 100) * 100);
-    } else {
-      // USD, EUR, GBP, AED, CAD, AUD, SGD:
-      // If amount > 0, at least 1 unit so payment gateway can charge real money
-      prices[curr] = Math.max(1, Math.round(amount / divisor));
-    }
-  }
-  return prices;
-}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -148,25 +116,20 @@ export default async function handler(req, res) {
       plans = DEFAULT_PLANS;
     }
 
-    // Augment with computed multi-currency rates
-    const augmentedPlans = plans.map((p) => {
+    // Clean pure USD format
+    const formattedPlans = plans.map((p) => {
       const planObj = typeof p.toJSON === 'function' ? p.toJSON() : { ...p };
       return {
         ...planObj,
-        prices: computeMultiCurrencyPrices(planObj.price),
-        originalPrices: planObj.originalPrice ? computeMultiCurrencyPrices(planObj.originalPrice) : {},
+        currency: 'USD',
+        price: Number(planObj.price),
+        originalPrice: planObj.originalPrice ? Number(planObj.originalPrice) : null,
       };
     });
 
-    return res.status(200).json(augmentedPlans);
+    return res.status(200).json(formattedPlans);
   } catch (error) {
     console.error('Pricing API error:', error);
-    // Always return fallback data to prevent broken UI
-    const augmentedDefault = DEFAULT_PLANS.map((p) => ({
-      ...p,
-      prices: computeMultiCurrencyPrices(p.price),
-      originalPrices: computeMultiCurrencyPrices(p.originalPrice),
-    }));
-    return res.status(200).json(augmentedDefault);
+    return res.status(200).json(DEFAULT_PLANS);
   }
 }

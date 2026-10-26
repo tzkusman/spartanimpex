@@ -18,9 +18,10 @@ const DEFAULT_PLANS = [
   {
     name: 'Starter Architecture',
     slug: 'starter-architecture',
-    price: 14999,
-    originalPrice: 24999,
+    price: 199,
+    originalPrice: 299,
     badge: 'Quick Launch',
+    currency: 'USD',
     description: 'Ideal for early-stage startups & SMBs needing architectural blueprint, API roadmap, and MVP system design.',
     features: [
       'Microservice & DB Schema Architecture Blueprint',
@@ -42,9 +43,10 @@ const DEFAULT_PLANS = [
   {
     name: 'Business Full-Stack Platform',
     slug: 'business-fullstack',
-    price: 49999,
-    originalPrice: 79999,
+    price: 649,
+    originalPrice: 999,
     badge: 'Most Popular Choice',
+    currency: 'USD',
     description: 'Comprehensive end-to-end full-stack engineering solution. Perfect for production web applications and portals.',
     features: [
       'Production-Ready React 19 / Next.js Frontend',
@@ -68,9 +70,10 @@ const DEFAULT_PLANS = [
   {
     name: 'Enterprise Custom Solution',
     slug: 'enterprise-custom',
-    price: 129999,
-    originalPrice: 199999,
+    price: 1699,
+    originalPrice: 2599,
     badge: 'Maximum Performance',
+    currency: 'USD',
     description: 'Bespoke high-scale engineering for large corporations, complex microservices, AI integration, and Oracle APEX migrations.',
     features: [
       'Full Custom Architecture & Multi-Tenant Database',
@@ -170,7 +173,7 @@ export default async function handler(req, res) {
         return res.status(404).json({ error: 'Pricing plan not found in database.' });
       }
 
-      // Parse and normalize updates
+      // Parse and normalize updates directly in USD
       const dataToUpdate = {};
       if (price !== undefined) dataToUpdate.price = Math.max(0, parseInt(price, 10));
       if (originalPrice !== undefined) {
