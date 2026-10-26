@@ -86,23 +86,29 @@ export default function PricingPage() {
     fetchPlans();
   }, []);
 
-  // Helper to get localized price for a plan
+  // Helper to get localized price for a plan (prioritizing live DB prices)
   const getPlanPrice = (planSlug) => {
+    const livePlan = plans.find((p) => p.slug === planSlug);
+    if (livePlan && livePlan.prices && livePlan.prices[currency]) {
+      return livePlan.prices[currency];
+    }
     const matrix = PLAN_PRICING_MATRIX[planSlug];
     if (matrix && matrix[currency]) {
       return matrix[currency].price;
     }
-    const defaultPlan = plans.find((p) => p.slug === planSlug);
-    return defaultPlan ? defaultPlan.price : 14999;
+    return livePlan ? livePlan.price : 14999;
   };
 
   const getPlanOriginalPrice = (planSlug) => {
+    const livePlan = plans.find((p) => p.slug === planSlug);
+    if (livePlan && livePlan.originalPrices && livePlan.originalPrices[currency]) {
+      return livePlan.originalPrices[currency];
+    }
     const matrix = PLAN_PRICING_MATRIX[planSlug];
     if (matrix && matrix[currency]) {
       return matrix[currency].originalPrice;
     }
-    const defaultPlan = plans.find((p) => p.slug === planSlug);
-    return defaultPlan ? defaultPlan.originalPrice : null;
+    return livePlan ? livePlan.originalPrice : null;
   };
 
   // Dynamically load official Razorpay checkout SDK

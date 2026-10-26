@@ -1,13 +1,13 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Shield, Lock, Mail, ArrowRight, AlertCircle, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { Shield, Lock, Mail, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import logoImg from '../../assets/spartan-logo.png';
 import Button from '../../components/common/Button';
 
 export default function AdminLoginPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('gajender@spartanimpex.com');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -21,7 +21,7 @@ export default function AdminLoginPage() {
       const response = await fetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: email.trim(), password }),
       });
 
       const data = await response.json();
@@ -92,7 +92,7 @@ export default function AdminLoginPage() {
           )}
 
           {/* Form */}
-          <form onSubmit={handleLogin} className="space-y-5">
+          <form onSubmit={handleLogin} autoComplete="off" className="space-y-5">
             <div>
               <label className="block text-xs uppercase font-semibold tracking-wider text-navy-200 mb-2">
                 Administrator Email
@@ -106,7 +106,8 @@ export default function AdminLoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  placeholder="gajender@spartanimpex.com"
+                  autoComplete="off"
+                  placeholder="admin@spartanimpex.com"
                   className="w-full pl-10 pr-4 py-3 bg-navy text-white text-sm rounded-xl border border-navy-border focus:border-cyan-DEFAULT focus:outline-none focus:ring-1 focus:ring-cyan-DEFAULT transition-colors placeholder:text-navy-500"
                 />
               </div>
@@ -125,7 +126,8 @@ export default function AdminLoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  placeholder="••••••••"
+                  autoComplete="new-password"
+                  placeholder="Enter administrator password"
                   className="w-full pl-10 pr-10 py-3 bg-navy text-white text-sm rounded-xl border border-navy-border focus:border-cyan-DEFAULT focus:outline-none focus:ring-1 focus:ring-cyan-DEFAULT transition-colors placeholder:text-navy-500"
                 />
                 <button
@@ -136,21 +138,6 @@ export default function AdminLoginPage() {
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
-            </div>
-
-            {/* Quick credentials hint */}
-            <div className="p-3 rounded-xl bg-navy/60 border border-navy-border/80 text-[11px] text-navy-300 flex items-center justify-between">
-              <span className="font-mono text-cyan-300">gajender@spartanimpex.com</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('gajender@spartanimpex.com');
-                  setPassword('admin123');
-                }}
-                className="text-cyan-400 hover:text-cyan-300 font-semibold underline decoration-dotted"
-              >
-                Auto-Fill
-              </button>
             </div>
 
             <Button
@@ -172,7 +159,7 @@ export default function AdminLoginPage() {
               to="/"
               className="text-xs text-navy-400 hover:text-cyan-300 transition-colors inline-flex items-center gap-1"
             >
-              <span>← Return to Public Portfolio</span>
+              <span>&larr; Return to Public Portfolio</span>
             </Link>
           </div>
         </div>

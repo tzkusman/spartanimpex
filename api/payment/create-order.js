@@ -1,59 +1,49 @@
 import 'dotenv/config';
 import Razorpay from 'razorpay';
 
-// Pricing catalog across international currencies
-const PLAN_PRICING = {
+// Divisors for converting base INR price to international currencies
+const FX_DIVISORS = {
+  INR: 1,
+  USD: 75.37,
+  JPY: 0.503,
+  EUR: 81.07,
+  GBP: 94.33,
+  AED: 20.55,
+  CAD: 55.76,
+  AUD: 50.16,
+  SGD: 55.76,
+};
+
+const ZERO_DECIMAL_CURRENCIES = ['JPY'];
+
+const FALLBACK_PLANS = {
   'starter-architecture': {
     name: 'Starter Architecture',
     slug: 'starter-architecture',
-    prices: {
-      INR: 14999,
-      USD: 199,
-      JPY: 29800,
-      EUR: 185,
-      GBP: 159,
-      AED: 730,
-      CAD: 269,
-      AUD: 299,
-      SGD: 269,
-    },
+    price: 14999,
     description: 'Ideal for early-stage startups & SMBs needing architectural blueprint, API roadmap, and MVP system design.',
   },
   'business-fullstack': {
     name: 'Business Full-Stack Platform',
     slug: 'business-fullstack',
-    prices: {
-      INR: 49999,
-      USD: 649,
-      JPY: 98000,
-      EUR: 599,
-      GBP: 519,
-      AED: 2380,
-      CAD: 879,
-      AUD: 979,
-      SGD: 879,
-    },
+    price: 49999,
     description: 'Comprehensive end-to-end full-stack engineering solution. Perfect for production web applications and portals.',
   },
   'enterprise-custom': {
     name: 'Enterprise Custom Solution',
     slug: 'enterprise-custom',
-    prices: {
-      INR: 129999,
-      USD: 1699,
-      JPY: 255000,
-      EUR: 1579,
-      GBP: 1359,
-      AED: 6240,
-      CAD: 2299,
-      AUD: 2549,
-      SGD: 2299,
-    },
+    price: 129999,
     description: 'Bespoke high-scale engineering for large corporations, complex microservices, AI integration, and Oracle APEX migrations.',
   }
 };
 
-const ZERO_DECIMAL_CURRENCIES = ['JPY'];
+function calculatePriceInCurrency(inrAmount, currencyCode) {
+  const code = String(currencyCode || 'USD').toUpperCase();
+  const divisor = FX_DIVISORS[code] || FX_DIVISORS['USD'];
+  if (code === 'INR') return inrAmount;
+  if (code === 'JPY') return Math.round(inrAmount / divisor / 100) * 100;
+  return Math.round(inrAmount / divisor);
+}
 
 export default async function handler(req, res) {
   // CORS setup
@@ -81,22 +71,40 @@ export default async function handler(req, res) {
     }
 
     const requestedCurrency = String(currency || 'USD').toUpperCase().trim();
-
-    // 1. Resolve Plan
     const normalizedSlug = String(planSlug || '').toLowerCase().trim();
-    let plan = PLAN_PRICING[normalizedSlug];
 
-    if (!plan) {
-      const matchKey = Object.keys(PLAN_PRICING).find(k => k.includes(normalizedSlug) || normalizedSlug.includes(k));
-      plan = matchKey ? PLAN_PRICING[matchKey] : PLAN_PRICING['starter-architecture'];
+    // 1. Fetch live plan from database
+    let planData = null;
+    let prisma = null;
+
+    if (process.env.DATABASE_URL) {
+      try {
+        const prismaModule = await import('../../server/src/prisma.js');
+        prisma = prismaModule.default || prismaModule.prisma;
+        if (prisma) {
+          planData = await prisma.pricingPlan.findFirst({
+            where: {
+              slug: normalizedSlug,
+              active: true,
+            },
+          });
+        }
+      } catch (dbErr) {
+        console.warn('Prisma lookup failed in create-order, using fallback:', dbErr.message);
+      }
     }
 
-    // Determine unit price
-    const unitPrice = plan.prices[requestedCurrency] || plan.prices['USD'] || plan.prices['INR'];
+    if (!planData) {
+      planData = FALLBACK_PLANS[normalizedSlug] || FALLBACK_PLANS['starter-architecture'];
+    }
 
-    // 2. Razorpay Subunit Calculation
+    // 2. Determine real live price in requested currency
+    const inrBasePrice = planData.price || 14999;
+    const unitPrice = calculatePriceInCurrency(inrBasePrice, requestedCurrency);
+
+    // 3. Razorpay Subunit Calculation
     // JPY: exact amount (zero-decimal)
-    // USD, EUR, GBP, INR, etc.: cents/paise (multiply by 100)
+    // USD, EUR, GBP, INR, etc.: multiply by 100
     const isZeroDecimal = ZERO_DECIMAL_CURRENCIES.includes(requestedCurrency);
     const amountInSubunit = isZeroDecimal ? Math.round(unitPrice) : Math.round(unitPrice * 100);
 
@@ -105,7 +113,7 @@ export default async function handler(req, res) {
 
     if (!key_id || !key_secret) {
       return res.status(500).json({
-        error: 'Razorpay API credentials missing in server environment. Please configure RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in Vercel settings.'
+        error: 'Razorpay API credentials missing in server environment. Please configure RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.'
       });
     }
 
@@ -119,12 +127,13 @@ export default async function handler(req, res) {
         currency: requestedCurrency,
         receipt,
         notes: {
-          planName: plan.name,
-          planSlug: plan.slug,
+          planName: planData.name,
+          planSlug: planData.slug,
           customerName: customerName.trim(),
           customerEmail: customerEmail.trim().toLowerCase(),
           customerPhone: customerPhone ? customerPhone.trim() : 'N/A',
           currency: requestedCurrency,
+          baseINR: String(inrBasePrice),
         },
       });
     } catch (rzpErr) {
@@ -135,31 +144,22 @@ export default async function handler(req, res) {
       });
     }
 
-    // 3. Optional Non-Blocking Database Transaction Log
-    if (process.env.DATABASE_URL) {
-      (async () => {
-        try {
-          const { default: prisma } = await import('../../server/src/prisma.js');
-          if (prisma) {
-            await prisma.paymentTransaction.create({
-              data: {
-                orderId: rzpOrder.id,
-                planSlug: plan.slug,
-                planName: plan.name,
-                amount: Math.round(unitPrice),
-                currency: requestedCurrency,
-                customerName: customerName.trim(),
-                customerEmail: customerEmail.trim().toLowerCase(),
-                customerPhone: customerPhone ? customerPhone.trim() : null,
-                status: 'PENDING',
-                receipt,
-              },
-            });
-          }
-        } catch (dbErr) {
-          console.warn('Prisma transaction logging skipped:', dbErr.message);
-        }
-      })().catch(() => {});
+    // 4. Non-Blocking Database Transaction Log
+    if (prisma) {
+      prisma.paymentTransaction.create({
+        data: {
+          orderId: rzpOrder.id,
+          planSlug: planData.slug,
+          planName: planData.name,
+          amount: Math.round(unitPrice),
+          currency: requestedCurrency,
+          customerName: customerName.trim(),
+          customerEmail: customerEmail.trim().toLowerCase(),
+          customerPhone: customerPhone ? customerPhone.trim() : null,
+          status: 'PENDING',
+          receipt,
+        },
+      }).catch(dbErr => console.warn('Prisma transaction logging skipped:', dbErr.message));
     }
 
     return res.status(200).json({
@@ -170,10 +170,10 @@ export default async function handler(req, res) {
       currency: requestedCurrency,
       keyId: key_id,
       plan: {
-        name: plan.name,
+        name: planData.name,
         price: unitPrice,
         currency: requestedCurrency,
-        description: plan.description,
+        description: planData.description,
       },
       customer: {
         name: customerName,
