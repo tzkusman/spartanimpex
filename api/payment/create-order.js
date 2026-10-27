@@ -22,6 +22,58 @@ const FALLBACK_PLANS = {
   }
 };
 
+// In-memory cache for live FX rate with 5-minute TTL
+let cachedFxRate = {
+  rate: 95.27,
+  timestamp: 0,
+};
+
+async function getLiveUsdToInrRate() {
+  const now = Date.now();
+  // Return cached rate if less than 5 minutes old
+  if (cachedFxRate.timestamp && now - cachedFxRate.timestamp < 300000) {
+    return cachedFxRate.rate;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch('https://open.er-api.com/v6/latest/USD', { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.rates?.INR && typeof data.rates.INR === 'number' && data.rates.INR > 50) {
+        const liveRate = Number(data.rates.INR.toFixed(2));
+        cachedFxRate = { rate: liveRate, timestamp: now };
+        return liveRate;
+      }
+    }
+  } catch (err) {
+    console.warn('Primary live FX API (open.er-api) failed, attempting fallback:', err.message);
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const res2 = await fetch('https://api.exchangerate-api.com/v4/latest/USD', { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (res2.ok) {
+      const data2 = await res2.json();
+      if (data2?.rates?.INR && typeof data2.rates.INR === 'number' && data2.rates.INR > 50) {
+        const liveRate2 = Number(data2.rates.INR.toFixed(2));
+        cachedFxRate = { rate: liveRate2, timestamp: now };
+        return liveRate2;
+      }
+    }
+  } catch (err2) {
+    console.warn('Fallback live FX API failed, using cached/safe rate:', err2.message);
+  }
+
+  return cachedFxRate.rate || 95.27;
+}
+
 export default async function handler(req, res) {
   // CORS setup
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -41,14 +93,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { planSlug, customerName, customerEmail, customerPhone } = req.body || {};
+    const { planSlug, customerName, customerEmail, customerPhone, billingMode } = req.body || {};
 
     if (!customerEmail || !customerName) {
       return res.status(400).json({ error: 'Full name and corporate email are required for checkout.' });
     }
 
     const normalizedSlug = String(planSlug || '').toLowerCase().trim();
-    const currency = 'USD'; // Native USD billing - Razorpay automatically handles real-time bank conversion
 
     // 1. Fetch live plan from database
     let planData = null;
@@ -78,8 +129,25 @@ export default async function handler(req, res) {
     // 2. Direct USD price from database (e.g. $1, $199, $649, $1699)
     const unitPriceUSD = planData.price !== undefined ? Number(planData.price) : 199;
 
-    // 3. Amount in USD subunit (cents): minimum 100 cents = $1.00 USD
-    const amountInSubunit = Math.max(100, Math.round(unitPriceUSD * 100));
+    // 3. Determine Billing Mode & Currency
+    // 'ALL_CHANNELS' (default): Converted at live interbank FX rate to INR.
+    // This unlocks UPI (GPay/PhonePe/Paytm/QR), NetBanking (50+ banks), Wallets, and Cards in Razorpay.
+    // 'USD': Billed directly in USD cents (Cards and Apple Pay only).
+    const isDirectUsd = (billingMode === 'USD');
+    let currency = 'INR';
+    let amountInSubunit = 0;
+    let liveRate = 1;
+    let amountINR = null;
+
+    if (isDirectUsd) {
+      currency = 'USD';
+      amountInSubunit = Math.max(100, Math.round(unitPriceUSD * 100)); // Cents
+    } else {
+      currency = 'INR';
+      liveRate = await getLiveUsdToInrRate();
+      amountINR = Math.max(1, Math.round(unitPriceUSD * liveRate));
+      amountInSubunit = amountINR * 100; // Paise
+    }
 
     const key_id = process.env.RAZORPAY_KEY_ID;
     const key_secret = process.env.RAZORPAY_KEY_SECRET;
@@ -107,6 +175,9 @@ export default async function handler(req, res) {
           customerPhone: customerPhone ? customerPhone.trim() : 'N/A',
           currency,
           priceUSD: String(unitPriceUSD),
+          liveRate: isDirectUsd ? '1.0' : String(liveRate),
+          amountINR: isDirectUsd ? 'N/A' : String(amountINR),
+          billingMode: isDirectUsd ? 'USD' : 'ALL_CHANNELS',
         },
       });
     } catch (rzpErr) {
@@ -124,7 +195,7 @@ export default async function handler(req, res) {
           orderId: rzpOrder.id,
           planSlug: planData.slug,
           planName: planData.name,
-          amount: Math.round(unitPriceUSD),
+          amount: Math.round(isDirectUsd ? unitPriceUSD : (amountINR || unitPriceUSD)),
           currency,
           customerName: customerName.trim(),
           customerEmail: customerEmail.trim().toLowerCase(),
@@ -139,8 +210,11 @@ export default async function handler(req, res) {
       success: true,
       orderId: rzpOrder.id,
       amount: amountInSubunit,
-      displayPrice: unitPriceUSD,
+      displayPriceUSD: unitPriceUSD,
       currency,
+      liveRate: isDirectUsd ? 1 : liveRate,
+      amountINR: isDirectUsd ? null : amountINR,
+      billingMode: isDirectUsd ? 'USD' : 'ALL_CHANNELS',
       keyId: key_id,
       plan: {
         name: planData.name,

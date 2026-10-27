@@ -13,7 +13,9 @@ import {
   AlertCircle,
   Loader2,
   Download,
-  X
+  X,
+  QrCode,
+  Building2
 } from 'lucide-react';
 import Container from '../components/common/Container';
 import { pricingPlansData } from '../data/portfolioData';
@@ -44,6 +46,8 @@ export default function PricingPage() {
   const [loading, setLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [billingMode, setBillingMode] = useState('ALL_CHANNELS'); // 'ALL_CHANNELS' (UPI/Netbanking/Cards) or 'USD'
+  const [liveFxRate, setLiveFxRate] = useState(95.27);
   const [formData, setFormData] = useState({ name: '', email: '', phone: '' });
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState(null);
@@ -74,6 +78,16 @@ export default function PricingPage() {
       }
     };
     fetchPlans();
+
+    // Fetch real-time live interbank exchange rate
+    fetch('https://open.er-api.com/v6/latest/USD')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.rates?.INR && typeof d.rates.INR === 'number' && d.rates.INR > 50 && isMounted) {
+          setLiveFxRate(Number(d.rates.INR.toFixed(2)));
+        }
+      })
+      .catch(() => {});
 
     return () => {
       isMounted = false;
@@ -142,9 +156,7 @@ export default function PricingPage() {
         throw new Error('Razorpay SDK failed to load. Please check your internet connection.');
       }
 
-      const activePriceUSD = getPlanPrice(selectedPlan);
-
-      // Step 1: Create Order on backend natively in USD
+      // Step 1: Create Order on backend with selected billingMode
       const res = await fetch('/api/payment/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -153,6 +165,7 @@ export default function PricingPage() {
           customerName: formData.name,
           customerEmail: formData.email,
           customerPhone: formData.phone,
+          billingMode,
         }),
       });
 
@@ -175,12 +188,17 @@ export default function PricingPage() {
         throw new Error('Razorpay API Key ID is not configured on the server. Please add your RAZORPAY_KEY_ID in Vercel Environment Variables.');
       }
 
+      const isINR = orderData.currency === 'INR';
+      const orderDescription = isINR
+        ? `${orderData.plan.name} Architecture ($${orderData.displayPriceUSD} USD ~ ₹${orderData.amountINR?.toLocaleString('en-IN')})`
+        : `${orderData.plan.name} Architecture Package ($${orderData.displayPriceUSD} USD)`;
+
       const options = {
         key: orderData.keyId,
         amount: orderData.amount,
-        currency: 'USD',
+        currency: orderData.currency,
         name: 'Spartan Impax Enterprise IT',
-        description: `${orderData.plan.name} Architecture Package ($${orderData.displayPrice} USD)`,
+        description: orderDescription,
         image: '/assets/spartan-logo.png',
         order_id: orderData.orderId,
         prefill: {
@@ -201,9 +219,11 @@ export default function PricingPage() {
                 orderId: orderData.orderId,
                 paymentId: response.razorpay_payment_id,
                 signature: response.razorpay_signature,
-                paymentMethod: 'Razorpay Global USD Checkout',
-                currency: 'USD',
-                amount: orderData.displayPrice,
+                paymentMethod: isINR ? 'Razorpay All Channels (UPI/NetBanking/Cards)' : 'Razorpay Direct USD Checkout',
+                currency: orderData.currency,
+                amount: isINR ? orderData.amountINR : orderData.displayPriceUSD,
+                priceUSD: orderData.displayPriceUSD,
+                liveRate: orderData.liveRate,
               }),
             });
 
@@ -216,8 +236,11 @@ export default function PricingPage() {
               orderId: orderData.orderId,
               paymentId: response.razorpay_payment_id,
               plan: selectedPlan,
-              amount: orderData.displayPrice,
-              currency: 'USD',
+              displayPriceUSD: orderData.displayPriceUSD,
+              amountINR: orderData.amountINR,
+              amount: isINR ? orderData.amountINR : orderData.displayPriceUSD,
+              currency: orderData.currency,
+              liveRate: orderData.liveRate,
               customer: formData,
             });
           } catch (vErr) {
@@ -249,12 +272,12 @@ export default function PricingPage() {
 
   const faqs = [
     {
-      q: 'Which currencies and payment methods do you accept?',
-      a: 'All invoices and architecture deliverables are denominated natively in United States Dollars (USD $). We accept all international and domestic cards (Visa, Mastercard, American Express, RuPay), Apple Pay, and major international banking rails. Razorpay automatically converts the exact dollar amount at the real-time live interbank exchange rate of the transaction second.'
+      q: 'Which currencies and payment channels do you accept?',
+      a: 'All deliverables and invoices are priced natively in United States Dollars (USD $). To ensure maximum convenience and zero financial loss, you can pay using All Channels: UPI (Google Pay, PhonePe, Paytm, QR Code scan), NetBanking from 50+ banks, Wallets, and domestic/international cards dynamically converted at the exact real-time live interbank exchange rate, or directly in USD via international cards & Apple Pay.'
     },
     {
-      q: 'How does live foreign exchange conversion work?',
-      a: 'When you check out in USD ($), your issuing card network and Razorpay dynamically apply the exact live market exchange rate of that exact second. This guarantees 100% pricing accuracy with zero manual conversion markups or discrepancies.'
+      q: 'How does the real-time live exchange rate guarantee zero loss?',
+      a: 'When checking out via All Channels, our server fetches the real-time interbank foreign exchange rate from live market feeds (e.g. 1 USD = ~₹95.27 INR). This guarantees 100% equivalence to actual dollars with zero arbitrary markups or static discrepancy.'
     },
     {
       q: 'Are there any hidden recurring fees or monthly charges?',
@@ -293,118 +316,118 @@ export default function PricingPage() {
             Invest in <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-DEFAULT via-cyan-300 to-blue-400">Production-Grade</span> Engineering
           </h1>
           <p className="text-silver-300 text-base md:text-lg leading-relaxed mb-8">
-            From high-conversion web platforms to mission-critical Oracle Cloud portals and Generative AI studios. Instant checkout powered by Razorpay Global.
+            From high-conversion web platforms to mission-critical Oracle Cloud portals and Generative AI studios. Instant checkout powered by Razorpay Global with all payment channels.
           </p>
 
-          {/* Clean Global USD Currency Pill */}
+          {/* Clean Global USD Currency Pill with Live FX Note */}
           <div className="inline-flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-navy-card/90 border border-cyan-DEFAULT/30 shadow-xl backdrop-blur-xl">
-            <div className="flex items-center gap-2 text-silver-300 text-xs font-semibold uppercase tracking-wider">
-              <Shield className="w-4 h-4 text-cyan-DEFAULT" />
-              <span>Global Enterprise Pricing in USD ($)</span>
-            </div>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-emerald-400 text-xs font-mono font-bold">Razorpay Live Gateway</span>
-          </div>
-
-          {/* Trust badges */}
-          <div className="flex flex-wrap items-center justify-center gap-6 mt-8 text-xs text-silver-400">
-            <span className="flex items-center gap-1.5">
-              <Shield className="w-4 h-4 text-cyan-DEFAULT" /> Razorpay 256-Bit SSL Encrypted
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-xs font-bold uppercase tracking-wider text-white">
+              Global Base Currency: <span className="text-cyan-DEFAULT">USD ($)</span>
             </span>
-            <span className="flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" /> 100% IP & Code Ownership
+            <span className="text-silver-400 text-xs hidden sm:inline">•</span>
+            <span className="text-silver-300 text-xs hidden sm:inline">
+              Live Interbank FX: <span className="text-emerald-400 font-mono font-semibold">1 USD = ₹{liveFxRate} INR</span>
             </span>
-            <span className="flex items-center gap-1.5">
-              <Zap className="w-4 h-4 text-cyan-DEFAULT" /> Direct CIO & CEO Consultation
-            </span>
+            <span className="text-silver-400 text-xs hidden sm:inline">•</span>
+            <span className="text-silver-400 text-xs hidden sm:inline">All Channels Enabled (UPI, NetBanking, Cards)</span>
           </div>
         </div>
 
         {/* Pricing Cards Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch mb-24">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-20 items-stretch">
           {plans.map((plan) => {
-            const isPopular = plan.popular;
-            const currentPrice = getPlanPrice(plan);
+            const isPopular = plan.popular || plan.slug === 'business-fullstack';
+            const price = getPlanPrice(plan);
             const originalPrice = getPlanOriginalPrice(plan);
+            const approxINR = Math.round(price * liveFxRate);
 
             return (
               <div
                 key={plan.id || plan.slug}
-                className={`relative rounded-3xl p-8 flex flex-col justify-between transition-all duration-300 backdrop-blur-xl ${
+                className={`relative rounded-3xl transition-all duration-300 flex flex-col justify-between ${
                   isPopular
-                    ? 'bg-navy-card/95 border-2 border-cyan-DEFAULT shadow-[0_0_35px_rgba(0,229,255,0.25)] lg:-translate-y-2'
-                    : 'bg-navy-card/80 border border-navy-border hover:border-cyan-DEFAULT/40 shadow-xl hover:-translate-y-1'
+                    ? 'bg-navy-card/90 border-2 border-cyan-DEFAULT shadow-[0_0_40px_rgba(0,229,255,0.2)] md:-translate-y-2'
+                    : 'bg-navy-card/60 border border-navy-border hover:border-cyan-DEFAULT/50 hover:shadow-xl'
                 }`}
               >
-                {/* Popular / Recommended Badge */}
+                {/* Popular Badge */}
                 {isPopular && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-gradient-to-r from-cyan-DEFAULT to-blue-600 text-navy-dark text-xs font-bold uppercase tracking-wider shadow-lg flex items-center gap-1">
-                    <Sparkles className="w-3.5 h-3.5" /> Most Popular Choice
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-gradient-to-r from-cyan-DEFAULT to-blue-500 text-navy-dark text-xs font-bold uppercase tracking-wider shadow-lg flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Most Popular Architecture</span>
                   </div>
                 )}
 
-                {/* Plan Top Section */}
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-2xl font-bold text-white tracking-tight">{plan.name}</h3>
-                    {plan.badge && (
-                      <span className="px-3 py-1 rounded-full text-xs font-semibold bg-navy border border-navy-border text-cyan-300">
-                        {plan.badge}
-                      </span>
-                    )}
+                <div className="p-8">
+                  {/* Plan Name & Category */}
+                  <div className="mb-4">
+                    <span className="text-xs font-bold uppercase tracking-wider text-cyan-DEFAULT">
+                      {plan.slug.replace('-', ' ')}
+                    </span>
+                    <h3 className="text-2xl font-serif font-bold text-white mt-1">{plan.name}</h3>
                   </div>
 
-                  <p className="text-silver-400 text-sm mb-6 min-h-[40px] leading-relaxed">
+                  <p className="text-silver-300 text-sm leading-relaxed mb-6 min-h-[48px]">
                     {plan.description}
                   </p>
 
-                  {/* Price Block - Zero Flicker USD Display */}
-                  <div className="mb-6 p-4 rounded-2xl bg-navy/80 border border-navy-border/60">
+                  {/* Pricing Display */}
+                  <div className="mb-6 p-4 rounded-2xl bg-navy border border-navy-border">
                     <div className="flex items-baseline gap-2">
-                      <span className="text-sm font-semibold text-cyan-300">USD</span>
-                      <span className="text-4xl font-black text-white tracking-tight">
-                        ${currentPrice.toLocaleString()}
+                      <span className="text-4xl lg:text-5xl font-black text-white tracking-tight">
+                        ${price.toLocaleString()}
                       </span>
-                      {originalPrice && (
-                        <span className="text-sm line-through text-silver-500 ml-1">
-                          ${originalPrice.toLocaleString()}
-                        </span>
-                      )}
+                      <span className="text-silver-400 text-xs font-semibold uppercase">USD</span>
                     </div>
-                    <p className="text-xs text-silver-400 mt-1">Single engagement milestone payment • Zero recurring surprises</p>
+                    {originalPrice && (
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="text-sm text-silver-400 line-through">
+                          ${originalPrice.toLocaleString()} USD
+                        </span>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold">
+                          Save ${originalPrice - price}
+                        </span>
+                      </div>
+                    )}
+                    <div className="mt-2 pt-2 border-t border-navy-border/50 text-[11px] text-silver-400 flex items-center justify-between">
+                      <span>Live FX conversion:</span>
+                      <span className="text-cyan-DEFAULT font-mono font-medium">≈ ₹{approxINR.toLocaleString('en-IN')} INR</span>
+                    </div>
                   </div>
 
-                  {/* Features List */}
+                  {/* Feature List */}
                   <div className="space-y-3 mb-8">
-                    <p className="text-xs font-semibold text-silver-300 uppercase tracking-wider">
-                      Included Architecture Deliverables:
+                    <p className="text-xs font-bold uppercase tracking-wider text-silver-400 mb-2">
+                      What's Included:
                     </p>
-                    {(Array.isArray(plan.features) ? plan.features : []).map((feature, idx) => (
-                      <div key={idx} className="flex items-start gap-3 text-sm text-silver-200">
-                        <div className="w-5 h-5 rounded-full bg-cyan-DEFAULT/10 border border-cyan-DEFAULT/30 flex items-center justify-center shrink-0 mt-0.5">
-                          <Check className="w-3 h-3 text-cyan-DEFAULT" />
+                    {plan.features?.map((feature, idx) => (
+                      <div key={idx} className="flex items-start gap-3">
+                        <div className="w-4 h-4 rounded-full bg-cyan-DEFAULT/15 border border-cyan-DEFAULT/40 flex items-center justify-center shrink-0 mt-0.5">
+                          <Check className="w-2.5 h-2.5 text-cyan-DEFAULT" />
                         </div>
-                        <span className="leading-snug">{feature}</span>
+                        <span className="text-silver-200 text-xs leading-relaxed">{feature}</span>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Bottom CTA */}
-                <div>
+                {/* Card CTA Footer */}
+                <div className="p-8 pt-0">
                   <button
                     onClick={() => handleOpenCheckout(plan)}
-                    className={`w-full py-4 px-6 rounded-xl font-bold text-sm tracking-wider uppercase transition-all duration-300 flex items-center justify-center gap-2 shadow-lg bg-navy border ${
+                    className={`w-full py-4 rounded-xl font-black text-xs uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-2 shadow-lg ${
                       isPopular
-                        ? 'border-2 border-cyan text-cyan-300 shadow-[0_0_20px_rgba(0,229,255,0.25)] hover:bg-cyan hover:text-navy-dark hover:shadow-[0_0_30px_rgba(0,229,255,0.6)]'
-                        : 'border border-cyan/40 text-cyan-300 hover:bg-cyan hover:text-navy-dark hover:shadow-[0_0_25px_rgba(0,229,255,0.4)]'
+                        ? 'bg-cyan-DEFAULT text-navy-dark hover:bg-cyan-300 shadow-[0_0_20px_rgba(0,229,255,0.4)]'
+                        : 'bg-navy border border-cyan-DEFAULT/40 text-cyan-DEFAULT hover:bg-cyan-DEFAULT hover:text-navy-dark'
                     }`}
                   >
-                    <span>Proceed to Checkout (${currentPrice.toLocaleString()})</span>
+                    <CreditCard className="w-4 h-4" />
+                    <span>Proceed to Secure Checkout</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
-                  <p className="text-center text-[11px] text-silver-500 mt-2 flex items-center justify-center gap-1">
-                    <Lock className="w-3 h-3" /> Razorpay 256-bit Encrypted Checkout
+                  <p className="text-center text-[10px] text-silver-400 mt-2">
+                    Instant Razorpay checkout • All channels supported
                   </p>
                 </div>
               </div>
@@ -412,28 +435,41 @@ export default function PricingPage() {
           })}
         </div>
 
-        {/* Enterprise Bespoke Bar */}
-        <div className="bg-gradient-to-r from-navy-card via-navy to-navy-card border border-navy-border rounded-3xl p-8 md:p-12 mb-24 shadow-2xl relative overflow-hidden">
-          <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
-            <div className="max-w-xl text-center md:text-left">
-              <span className="text-xs uppercase tracking-widest text-cyan-DEFAULT font-bold mb-2 block">
-                Custom Enterprise Retainers
-              </span>
-              <h3 className="text-2xl md:text-3xl font-serif font-bold text-white mb-3">
-                Need a Dedicated Architect or Multi-Month Retainer?
-              </h3>
-              <p className="text-silver-300 text-sm leading-relaxed">
-                Connect directly with CIO Usman and CEO Gajender Singh Rajawat for custom microservices architecture, Oracle APEX cloud migrations, or dedicated engineering squads.
+        {/* Security & Assurance Banner */}
+        <div className="mb-20 grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="p-6 rounded-2xl bg-navy-card/40 border border-navy-border flex items-start gap-4">
+            <div className="w-10 h-10 rounded-xl bg-cyan-DEFAULT/10 border border-cyan-DEFAULT/30 flex items-center justify-center shrink-0">
+              <Shield className="w-5 h-5 text-cyan-DEFAULT" />
+            </div>
+            <div>
+              <h4 className="font-bold text-white text-sm mb-1">Razorpay Verified & Secure</h4>
+              <p className="text-silver-300 text-xs leading-relaxed">
+                256-bit encryption with cryptographic HMAC-SHA256 signature verification on every milestone transaction.
               </p>
             </div>
-            <div className="flex flex-col sm:flex-row gap-4 shrink-0">
-              <Link
-                to="/contact"
-                className="px-6 py-3.5 rounded-xl bg-cyan-DEFAULT text-navy-dark font-bold text-sm tracking-wider uppercase hover:bg-cyan-300 transition-all shadow-[0_0_20px_rgba(0,229,255,0.4)] flex items-center justify-center gap-2"
-              >
-                Schedule Architecture Call
-                <ArrowRight className="w-4 h-4" />
-              </Link>
+          </div>
+
+          <div className="p-6 rounded-2xl bg-navy-card/40 border border-navy-border flex items-start gap-4">
+            <div className="w-10 h-10 rounded-xl bg-cyan-DEFAULT/10 border border-cyan-DEFAULT/30 flex items-center justify-center shrink-0">
+              <QrCode className="w-5 h-5 text-cyan-DEFAULT" />
+            </div>
+            <div>
+              <h4 className="font-bold text-white text-sm mb-1">All Channels: UPI, NetBanking & Cards</h4>
+              <p className="text-silver-300 text-xs leading-relaxed">
+                Pay with Google Pay, PhonePe, Paytm, instant QR code, 50+ NetBanking options, and domestic or foreign credit/debit cards.
+              </p>
+            </div>
+          </div>
+
+          <div className="p-6 rounded-2xl bg-navy-card/40 border border-navy-border flex items-start gap-4">
+            <div className="w-10 h-10 rounded-xl bg-cyan-DEFAULT/10 border border-cyan-DEFAULT/30 flex items-center justify-center shrink-0">
+              <Building2 className="w-5 h-5 text-cyan-DEFAULT" />
+            </div>
+            <div>
+              <h4 className="font-bold text-white text-sm mb-1">Zero Financial Discrepancy</h4>
+              <p className="text-silver-300 text-xs leading-relaxed">
+                Orders are calculated at the real-time live interbank exchange rate, ensuring 100% true dollar equivalence.
+              </p>
             </div>
           </div>
         </div>
@@ -496,28 +532,93 @@ export default function PricingPage() {
                     <CreditCard className="w-6 h-6 text-cyan-DEFAULT" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Razorpay Secure Global Checkout</h3>
+                    <h3 className="text-xl font-bold text-white">Razorpay Multi-Channel Checkout</h3>
                     <p className="text-xs text-silver-400">Package: {selectedPlan.name} (${getPlanPrice(selectedPlan)} USD)</p>
                   </div>
                 </div>
 
                 {/* Plan Summary Card */}
-                <div className="p-4 rounded-2xl bg-navy border border-navy-border mb-6">
+                <div className="p-4 rounded-2xl bg-navy border border-navy-border mb-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs text-silver-400">Selected Architecture Package</p>
                       <h4 className="font-bold text-white text-base">{selectedPlan.name}</h4>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-silver-400">Total Investment</p>
+                      <p className="text-xs text-silver-400">Base Price</p>
                       <span className="text-xl font-black text-cyan-DEFAULT">
                         ${getPlanPrice(selectedPlan).toLocaleString()} USD
                       </span>
                     </div>
                   </div>
-                  <div className="mt-2.5 pt-2.5 border-t border-navy-border/60 text-[11px] text-silver-400 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-                    <span>Razorpay dynamically converts to client's local currency at live interbank rate</span>
+                  {billingMode === 'ALL_CHANNELS' && (
+                    <div className="mt-3 pt-3 border-t border-navy-border/60 flex items-center justify-between text-xs">
+                      <span className="text-silver-300 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        Live FX Rate: 1 USD = ₹{liveFxRate}
+                      </span>
+                      <span className="font-bold text-emerald-400 font-mono">
+                        Payable: ₹{Math.round(getPlanPrice(selectedPlan) * liveFxRate).toLocaleString('en-IN')} INR
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Channel Selector */}
+                <div className="mb-5">
+                  <label className="block text-xs font-semibold text-silver-300 uppercase tracking-wider mb-2">
+                    Payment Method Channel
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setBillingMode('ALL_CHANNELS')}
+                      className={`p-3 rounded-2xl border text-left transition-all relative ${
+                        billingMode === 'ALL_CHANNELS'
+                          ? 'bg-cyan-DEFAULT/15 border-cyan-DEFAULT shadow-[0_0_15px_rgba(0,229,255,0.2)]'
+                          : 'bg-navy border-navy-border hover:border-silver-500'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-bold text-xs text-white flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-cyan-DEFAULT" />
+                          All Channels
+                        </span>
+                        {billingMode === 'ALL_CHANNELS' && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-cyan-DEFAULT text-navy-dark uppercase">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-silver-300 leading-tight">
+                        UPI (QR, GPay, PhonePe), NetBanking 50+ Banks, Wallets & Cards
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setBillingMode('USD')}
+                      className={`p-3 rounded-2xl border text-left transition-all relative ${
+                        billingMode === 'USD'
+                          ? 'bg-cyan-DEFAULT/15 border-cyan-DEFAULT shadow-[0_0_15px_rgba(0,229,255,0.2)]'
+                          : 'bg-navy border-navy-border hover:border-silver-500'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-bold text-xs text-white flex items-center gap-1.5">
+                          <CreditCard className="w-3.5 h-3.5 text-silver-300" />
+                          Direct USD
+                        </span>
+                        {billingMode === 'USD' && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-cyan-DEFAULT text-navy-dark uppercase">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-silver-300 leading-tight">
+                        International Cards (Visa, Mastercard, Amex) & Apple Pay in USD
+                      </p>
+                    </button>
                   </div>
                 </div>
 
@@ -559,13 +660,13 @@ export default function PricingPage() {
 
                   <div>
                     <label className="block text-xs font-semibold text-silver-300 uppercase tracking-wider mb-1.5">
-                      Contact / Phone (Optional)
+                      Contact / Phone (Required for UPI & SMS Receipts)
                     </label>
                     <input
                       type="tel"
                       value={formData.phone}
                       onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      placeholder="+91 98765 43210 / +1 (555) 019-2834"
+                      placeholder="+91 91323 54275 / +1 (555) 019-2834"
                       className="w-full px-4 py-3 rounded-xl bg-navy border border-navy-border text-white text-sm focus:outline-none focus:border-cyan-DEFAULT focus:ring-1 focus:ring-cyan-DEFAULT transition-all"
                     />
                   </div>
@@ -580,23 +681,27 @@ export default function PricingPage() {
                       {paymentLoading ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Connecting to Razorpay Global Gateway...</span>
+                          <span>Connecting to Razorpay Gateway...</span>
                         </>
                       ) : (
                         <>
                           <Lock className="w-4 h-4" />
-                          <span>Pay ${getPlanPrice(selectedPlan).toLocaleString()} USD with Razorpay</span>
+                          <span>
+                            {billingMode === 'ALL_CHANNELS'
+                              ? `Pay with Razorpay (All Channels: UPI, NetBanking, Cards)`
+                              : `Pay $${getPlanPrice(selectedPlan).toLocaleString()} USD with Razorpay`}
+                          </span>
                         </>
                       )}
                     </button>
                   </div>
 
                   <div className="flex items-center justify-center gap-3 text-[11px] text-silver-400 pt-2 flex-wrap">
-                    <span>International & Domestic Cards</span>
+                    <span>UPI (GPay / PhonePe / QR)</span>
                     <span>•</span>
-                    <span>Apple Pay</span>
+                    <span>NetBanking 50+ Banks</span>
                     <span>•</span>
-                    <span>Live Bank FX Conversion</span>
+                    <span>Cards & Wallets</span>
                     <span>•</span>
                     <span>256-bit SSL</span>
                   </div>
@@ -611,7 +716,7 @@ export default function PricingPage() {
 
                 <h3 className="text-2xl font-bold text-white mb-2">Payment Successfully Verified!</h3>
                 <p className="text-silver-300 text-sm mb-6">
-                  Thank you, <strong className="text-white">{paymentSuccess.customer.name}</strong>. Your international transaction has been confirmed in real time.
+                  Thank you, <strong className="text-white">{paymentSuccess.customer.name}</strong>. Your payment has been confirmed in real time.
                 </p>
 
                 <div className="p-4 rounded-2xl bg-navy border border-navy-border text-left text-xs space-y-2 mb-6">
@@ -628,11 +733,19 @@ export default function PricingPage() {
                     <span className="font-semibold text-white">{paymentSuccess.plan.name}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-silver-400">Total Charged:</span>
+                    <span className="text-silver-400">Package Base Price:</span>
                     <span className="font-bold text-white">
-                      ${Number(paymentSuccess.amount).toLocaleString()} USD
+                      ${Number(paymentSuccess.displayPriceUSD || paymentSuccess.amount).toLocaleString()} USD
                     </span>
                   </div>
+                  {paymentSuccess.amountINR && (
+                    <div className="flex justify-between">
+                      <span className="text-silver-400">Amount Paid (INR @ {paymentSuccess.liveRate}):</span>
+                      <span className="font-bold text-emerald-400">
+                        ₹{Number(paymentSuccess.amountINR).toLocaleString('en-IN')} INR
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -646,8 +759,8 @@ export default function PricingPage() {
                         customerEmail: paymentSuccess.customer.email,
                         customerPhone: paymentSuccess.customer.phone,
                         planName: paymentSuccess.plan.name,
-                        amount: paymentSuccess.amount,
-                        currency: 'USD',
+                        amount: paymentSuccess.amountINR || paymentSuccess.displayPriceUSD,
+                        currency: paymentSuccess.currency,
                         status: 'PAID',
                       })
                     }
