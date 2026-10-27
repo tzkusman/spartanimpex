@@ -22,6 +22,57 @@ const FALLBACK_PLANS = {
   }
 };
 
+// In-memory cache for live FX rate with 5-minute TTL
+let cachedFxRate = {
+  rate: 95.27,
+  timestamp: 0,
+};
+
+async function getLiveUsdToInrRate() {
+  const now = Date.now();
+  if (cachedFxRate.timestamp && now - cachedFxRate.timestamp < 300000) {
+    return cachedFxRate.rate;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch('https://open.er-api.com/v6/latest/USD', { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.rates?.INR && typeof data.rates.INR === 'number' && data.rates.INR > 50) {
+        const liveRate = Number(data.rates.INR.toFixed(2));
+        cachedFxRate = { rate: liveRate, timestamp: now };
+        return liveRate;
+      }
+    }
+  } catch (err) {
+    console.warn('Primary live FX API (open.er-api) failed, attempting fallback:', err.message);
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const res2 = await fetch('https://api.exchangerate-api.com/v4/latest/USD', { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (res2.ok) {
+      const data2 = await res2.json();
+      if (data2?.rates?.INR && typeof data2.rates.INR === 'number' && data2.rates.INR > 50) {
+        const liveRate2 = Number(data2.rates.INR.toFixed(2));
+        cachedFxRate = { rate: liveRate2, timestamp: now };
+        return liveRate2;
+      }
+    }
+  } catch (err2) {
+    console.warn('Fallback live FX API failed, using cached/safe rate:', err2.message);
+  }
+
+  return cachedFxRate.rate || 95.27;
+}
+
 export default async function handler(req, res) {
   // CORS setup
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -41,7 +92,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { planSlug, customerName, customerEmail, customerPhone } = req.body || {};
+    const { planSlug, customerName, customerEmail, customerPhone, method } = req.body || {};
 
     if (!customerEmail || !customerName) {
       return res.status(400).json({ error: 'Full name and corporate email are required for checkout.' });
@@ -77,9 +128,22 @@ export default async function handler(req, res) {
     // 2. Direct USD price from database (e.g. $1, $199, $649, $1699)
     const unitPriceUSD = planData.price !== undefined ? Number(planData.price) : 199;
 
-    // 3. Strictly Native USD Currency & Cents Subunit (Zero INR anywhere)
-    const currency = 'USD';
-    const amountInSubunit = Math.max(100, Math.round(unitPriceUSD * 100)); // Cents
+    // 3. Routing: UPI & NetBanking (INR via live FX) vs Card & Apple Pay (USD)
+    const isUpiNetBanking = (method === 'UPI' || method === 'INR');
+    let currency = 'USD';
+    let amountInSubunit = 0;
+    let liveRate = 1;
+    let amountINR = null;
+
+    if (isUpiNetBanking) {
+      currency = 'INR';
+      liveRate = await getLiveUsdToInrRate();
+      amountINR = Math.max(1, Math.round(unitPriceUSD * liveRate));
+      amountInSubunit = amountINR * 100; // Paise
+    } else {
+      currency = 'USD';
+      amountInSubunit = Math.max(100, Math.round(unitPriceUSD * 100)); // Cents
+    }
 
     const key_id = process.env.RAZORPAY_KEY_ID;
     const key_secret = process.env.RAZORPAY_KEY_SECRET;
@@ -105,8 +169,11 @@ export default async function handler(req, res) {
           customerName: customerName.trim(),
           customerEmail: customerEmail.trim().toLowerCase(),
           customerPhone: customerPhone ? customerPhone.trim() : 'N/A',
-          currency: 'USD',
+          currency,
           priceUSD: String(unitPriceUSD),
+          method: isUpiNetBanking ? 'UPI_NETBANKING' : 'CARD_USD',
+          amountINR: isUpiNetBanking ? String(amountINR) : 'N/A',
+          liveRate: isUpiNetBanking ? String(liveRate) : '1.0',
         },
       });
     } catch (rzpErr) {
@@ -124,8 +191,8 @@ export default async function handler(req, res) {
           orderId: rzpOrder.id,
           planSlug: planData.slug,
           planName: planData.name,
-          amount: Math.round(unitPriceUSD),
-          currency: 'USD',
+          amount: Math.round(isUpiNetBanking ? (amountINR || unitPriceUSD) : unitPriceUSD),
+          currency,
           customerName: customerName.trim(),
           customerEmail: customerEmail.trim().toLowerCase(),
           customerPhone: customerPhone ? customerPhone.trim() : null,
@@ -140,12 +207,15 @@ export default async function handler(req, res) {
       orderId: rzpOrder.id,
       amount: amountInSubunit,
       displayPrice: unitPriceUSD,
-      currency: 'USD',
+      currency,
+      amountINR: isUpiNetBanking ? amountINR : null,
+      liveRate: isUpiNetBanking ? liveRate : 1,
+      method: isUpiNetBanking ? 'UPI' : 'CARD_USD',
       keyId: key_id,
       plan: {
         name: planData.name,
         priceUSD: unitPriceUSD,
-        currency: 'USD',
+        currency,
         description: planData.description,
       },
       customer: {

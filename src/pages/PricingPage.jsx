@@ -14,6 +14,7 @@ import {
   Loader2,
   Download,
   X,
+  QrCode,
   Globe2,
   Building2
 } from 'lucide-react';
@@ -46,6 +47,7 @@ export default function PricingPage() {
   const [loading, setLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [paymentTab, setPaymentTab] = useState('UPI'); // 'UPI' or 'CARD_USD'
   const [formData, setFormData] = useState({ name: '', email: '', phone: '' });
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState(null);
@@ -129,6 +131,16 @@ export default function PricingPage() {
     setIsModalOpen(true);
   };
 
+  const handlePhoneChange = (val) => {
+    setFormData({ ...formData, phone: val });
+    const clean = val.trim();
+    if (clean.startsWith('+1') || clean.startsWith('+44') || clean.startsWith('+61') || clean.startsWith('+49')) {
+      setPaymentTab('CARD_USD');
+    } else if (clean.startsWith('+91')) {
+      setPaymentTab('UPI');
+    }
+  };
+
   const handleInitiatePayment = async (e) => {
     e.preventDefault();
     setPaymentError(null);
@@ -144,7 +156,7 @@ export default function PricingPage() {
         throw new Error('Razorpay SDK failed to load. Please check your internet connection.');
       }
 
-      // Step 1: Create Order on backend (natively in USD)
+      // Step 1: Create Order on backend with chosen method
       const res = await fetch('/api/payment/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -153,6 +165,7 @@ export default function PricingPage() {
           customerName: formData.name,
           customerEmail: formData.email,
           customerPhone: formData.phone,
+          method: paymentTab,
         }),
       });
 
@@ -175,14 +188,17 @@ export default function PricingPage() {
         throw new Error('Razorpay API Key ID is not configured on the server. Please add your RAZORPAY_KEY_ID in Vercel Environment Variables.');
       }
 
-      const activePriceUSD = orderData.displayPrice || getPlanPrice(selectedPlan);
+      const isUSD = (orderData.currency === 'USD');
+      const orderDescription = isUSD
+        ? `${orderData.plan.name} Architecture Package ($${orderData.displayPrice} USD)`
+        : `${orderData.plan.name} Architecture Package (₹${orderData.amountINR?.toLocaleString('en-IN')})`;
 
       const options = {
         key: orderData.keyId,
-        amount: orderData.amount, // in cents
-        currency: 'USD',
+        amount: orderData.amount,
+        currency: orderData.currency,
         name: 'Spartan Impax Enterprise IT',
-        description: `${orderData.plan.name} Architecture Package ($${activePriceUSD} USD)`,
+        description: orderDescription,
         image: '/assets/spartan-logo.png',
         order_id: orderData.orderId,
         prefill: {
@@ -203,9 +219,10 @@ export default function PricingPage() {
                 orderId: orderData.orderId,
                 paymentId: response.razorpay_payment_id,
                 signature: response.razorpay_signature,
-                paymentMethod: 'Razorpay Global USD Checkout',
-                currency: 'USD',
-                amount: activePriceUSD,
+                paymentMethod: isUSD ? 'Razorpay Global USD Checkout' : 'Razorpay Multi-Channel (UPI/NetBanking/Cards)',
+                currency: orderData.currency,
+                amount: isUSD ? orderData.displayPrice : orderData.amountINR,
+                priceUSD: orderData.displayPrice,
               }),
             });
 
@@ -218,8 +235,10 @@ export default function PricingPage() {
               orderId: orderData.orderId,
               paymentId: response.razorpay_payment_id,
               plan: selectedPlan,
-              amount: activePriceUSD,
-              currency: 'USD',
+              amount: isUSD ? orderData.displayPrice : orderData.amountINR,
+              currency: orderData.currency,
+              priceUSD: orderData.displayPrice,
+              amountINR: orderData.amountINR,
               customer: formData,
             });
           } catch (vErr) {
@@ -251,12 +270,12 @@ export default function PricingPage() {
 
   const faqs = [
     {
-      q: 'Which currencies and payment methods do you accept?',
-      a: 'All deliverables and invoices are priced and billed strictly in United States Dollars (USD $). We accept all international and domestic cards (Visa, Mastercard, American Express, RuPay) and Apple Pay. Your card is billed in pure USD with zero arbitrary conversion markups.'
+      q: 'Which payment methods and currencies do you accept?',
+      a: 'We accept All Channels: UPI (Google Pay, PhonePe, Paytm, QR Code scan), NetBanking from 50+ banks, Wallets, and domestic/international cards. For international clients paying with foreign cards or Apple Pay, checkout is processed directly in USD ($).'
     },
     {
-      q: 'How does global USD billing work?',
-      a: 'Regardless of whether you are located in the United States, United Kingdom, India, Europe, or anywhere in the world, the checkout amount is processed directly in USD ($). If your card is issued in another currency, your bank automatically settles the exact dollar amount.'
+      q: 'How does live foreign exchange conversion work?',
+      a: 'When paying via UPI or NetBanking, the order is automatically converted using the real-time live interbank exchange rate, ensuring 100% equivalence to actual dollars with zero fee loss.'
     },
     {
       q: 'Are there any hidden recurring fees or monthly charges?',
@@ -298,14 +317,14 @@ export default function PricingPage() {
             From high-conversion web platforms to mission-critical Oracle Cloud portals and Generative AI studios. Instant checkout powered by Razorpay Global.
           </p>
 
-          {/* Clean Global USD Badge without Currency Sync Clutter */}
+          {/* Clean Global USD Badge */}
           <div className="inline-flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-navy-card/90 border border-cyan-DEFAULT/30 shadow-xl backdrop-blur-xl">
             <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
             <span className="text-xs font-bold uppercase tracking-wider text-white">
               Global Base Currency: <span className="text-cyan-DEFAULT">USD ($)</span>
             </span>
             <span className="text-silver-400 text-xs hidden sm:inline">•</span>
-            <span className="text-silver-300 text-xs hidden sm:inline">International Cards & Apple Pay</span>
+            <span className="text-silver-300 text-xs hidden sm:inline">All Payment Channels Supported</span>
             <span className="text-silver-400 text-xs hidden sm:inline">•</span>
             <span className="text-silver-400 text-xs hidden sm:inline">256-bit Encrypted</span>
           </div>
@@ -399,7 +418,7 @@ export default function PricingPage() {
                     <ArrowRight className="w-4 h-4" />
                   </button>
                   <p className="text-center text-[10px] text-silver-400 mt-2">
-                    Instant Razorpay checkout • Billed in USD
+                    Instant Razorpay checkout • All channels supported
                   </p>
                 </div>
               </div>
@@ -423,12 +442,12 @@ export default function PricingPage() {
 
           <div className="p-6 rounded-2xl bg-navy-card/40 border border-navy-border flex items-start gap-4">
             <div className="w-10 h-10 rounded-xl bg-cyan-DEFAULT/10 border border-cyan-DEFAULT/30 flex items-center justify-center shrink-0">
-              <Globe2 className="w-5 h-5 text-cyan-DEFAULT" />
+              <QrCode className="w-5 h-5 text-cyan-DEFAULT" />
             </div>
             <div>
-              <h4 className="font-bold text-white text-sm mb-1">Global USD Card Rails</h4>
+              <h4 className="font-bold text-white text-sm mb-1">All Channels: UPI, NetBanking & Cards</h4>
               <p className="text-silver-300 text-xs leading-relaxed">
-                Seamless checkout for clients across the United States, UK, Europe, India, and worldwide via Visa, Mastercard, Amex, and Apple Pay.
+                Pay with Google Pay, PhonePe, Paytm, instant QR code, 50+ NetBanking options, and domestic or foreign cards.
               </p>
             </div>
           </div>
@@ -499,18 +518,18 @@ export default function PricingPage() {
             {/* Modal Content */}
             {!paymentSuccess ? (
               <>
-                <div className="flex items-center gap-3 mb-6">
+                <div className="flex items-center gap-3 mb-5">
                   <div className="w-12 h-12 rounded-2xl bg-cyan-DEFAULT/10 border border-cyan-DEFAULT/30 flex items-center justify-center">
                     <CreditCard className="w-6 h-6 text-cyan-DEFAULT" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Razorpay Global Checkout</h3>
+                    <h3 className="text-xl font-bold text-white">Razorpay Multi-Channel Checkout</h3>
                     <p className="text-xs text-silver-400">Package: {selectedPlan.name} (${getPlanPrice(selectedPlan)} USD)</p>
                   </div>
                 </div>
 
                 {/* Plan Summary Card */}
-                <div className="p-4 rounded-2xl bg-navy border border-navy-border mb-6">
+                <div className="p-4 rounded-2xl bg-navy border border-navy-border mb-5">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs text-silver-400">Selected Architecture Package</p>
@@ -525,8 +544,40 @@ export default function PricingPage() {
                   </div>
                   <div className="mt-2.5 pt-2.5 border-t border-navy-border/60 text-[11px] text-silver-400 flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-                    <span>Global checkout: International & Domestic Cards, Apple Pay</span>
+                    <span>
+                      {paymentTab === 'UPI'
+                        ? 'All channels enabled: UPI (QR, GPay, PhonePe), NetBanking 50+ Banks, Cards & Wallets'
+                        : 'Global USD checkout: Visa, Mastercard, American Express & Apple Pay'}
+                    </span>
                   </div>
+                </div>
+
+                {/* Clean Segmented Method Tabs */}
+                <div className="flex p-1 bg-navy rounded-2xl border border-navy-border mb-5">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentTab('UPI')}
+                    className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                      paymentTab === 'UPI'
+                        ? 'bg-cyan-DEFAULT text-navy-dark shadow-md'
+                        : 'text-silver-300 hover:text-white'
+                    }`}
+                  >
+                    <QrCode className="w-4 h-4" />
+                    <span>UPI & NetBanking</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentTab('CARD_USD')}
+                    className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                      paymentTab === 'CARD_USD'
+                        ? 'bg-cyan-DEFAULT text-navy-dark shadow-md'
+                        : 'text-silver-300 hover:text-white'
+                    }`}
+                  >
+                    <CreditCard className="w-4 h-4" />
+                    <span>Card & Apple Pay (USD $)</span>
+                  </button>
                 </div>
 
                 {paymentError && (
@@ -567,13 +618,13 @@ export default function PricingPage() {
 
                   <div>
                     <label className="block text-xs font-semibold text-silver-300 uppercase tracking-wider mb-1.5">
-                      Contact / Phone (Optional for SMS Receipts)
+                      Contact / Phone {paymentTab === 'UPI' ? '(Required for UPI QR)' : '(Optional)'}
                     </label>
                     <input
                       type="tel"
                       value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      placeholder="+1 (555) 019-2834 / +91 91323 54275"
+                      onChange={(e) => handlePhoneChange(e.target.value)}
+                      placeholder="+91 91323 54275 / +1 (555) 019-2834"
                       className="w-full px-4 py-3 rounded-xl bg-navy border border-navy-border text-white text-sm focus:outline-none focus:border-cyan-DEFAULT focus:ring-1 focus:ring-cyan-DEFAULT transition-all"
                     />
                   </div>
@@ -593,20 +644,36 @@ export default function PricingPage() {
                       ) : (
                         <>
                           <Lock className="w-4 h-4" />
-                          <span>Pay ${getPlanPrice(selectedPlan).toLocaleString()} USD with Razorpay</span>
+                          <span>
+                            {paymentTab === 'UPI'
+                              ? 'Pay with UPI, NetBanking & Cards'
+                              : `Pay $${getPlanPrice(selectedPlan).toLocaleString()} USD with Razorpay`}
+                          </span>
                         </>
                       )}
                     </button>
                   </div>
 
                   <div className="flex items-center justify-center gap-3 text-[11px] text-silver-400 pt-2 flex-wrap">
-                    <span>Visa</span>
-                    <span>•</span>
-                    <span>Mastercard</span>
-                    <span>•</span>
-                    <span>American Express</span>
-                    <span>•</span>
-                    <span>Apple Pay</span>
+                    {paymentTab === 'UPI' ? (
+                      <>
+                        <span>UPI (GPay / PhonePe / QR)</span>
+                        <span>•</span>
+                        <span>NetBanking 50+ Banks</span>
+                        <span>•</span>
+                        <span>Cards & Wallets</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Visa</span>
+                        <span>•</span>
+                        <span>Mastercard</span>
+                        <span>•</span>
+                        <span>American Express</span>
+                        <span>•</span>
+                        <span>Apple Pay</span>
+                      </>
+                    )}
                     <span>•</span>
                     <span>256-bit SSL</span>
                   </div>
@@ -638,9 +705,11 @@ export default function PricingPage() {
                     <span className="font-semibold text-white">{paymentSuccess.plan.name}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-silver-400">Total Charged:</span>
+                    <span className="text-silver-400">Amount Charged:</span>
                     <span className="font-bold text-white">
-                      ${Number(paymentSuccess.amount).toLocaleString()} USD
+                      {paymentSuccess.currency === 'USD'
+                        ? `$${Number(paymentSuccess.amount).toLocaleString()} USD`
+                        : `₹${Number(paymentSuccess.amount).toLocaleString('en-IN')} INR ($${paymentSuccess.priceUSD} USD)`}
                     </span>
                   </div>
                 </div>
@@ -657,7 +726,7 @@ export default function PricingPage() {
                         customerPhone: paymentSuccess.customer.phone,
                         planName: paymentSuccess.plan.name,
                         amount: paymentSuccess.amount,
-                        currency: 'USD',
+                        currency: paymentSuccess.currency,
                         status: 'PAID',
                       })
                     }
