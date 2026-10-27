@@ -46,8 +46,6 @@ export default function PricingPage() {
   const [loading, setLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [billingMode, setBillingMode] = useState('ALL_CHANNELS'); // 'ALL_CHANNELS' (UPI/Netbanking/Cards) or 'USD'
-  const [liveFxRate, setLiveFxRate] = useState(95.27);
   const [formData, setFormData] = useState({ name: '', email: '', phone: '' });
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState(null);
@@ -78,16 +76,6 @@ export default function PricingPage() {
       }
     };
     fetchPlans();
-
-    // Fetch real-time live interbank exchange rate
-    fetch('https://open.er-api.com/v6/latest/USD')
-      .then((r) => r.json())
-      .then((d) => {
-        if (d?.rates?.INR && typeof d.rates.INR === 'number' && d.rates.INR > 50 && isMounted) {
-          setLiveFxRate(Number(d.rates.INR.toFixed(2)));
-        }
-      })
-      .catch(() => {});
 
     return () => {
       isMounted = false;
@@ -156,7 +144,7 @@ export default function PricingPage() {
         throw new Error('Razorpay SDK failed to load. Please check your internet connection.');
       }
 
-      // Step 1: Create Order on backend with selected billingMode
+      // Step 1: Create Order on backend (auto-calculates live FX in background)
       const res = await fetch('/api/payment/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -165,7 +153,6 @@ export default function PricingPage() {
           customerName: formData.name,
           customerEmail: formData.email,
           customerPhone: formData.phone,
-          billingMode,
         }),
       });
 
@@ -188,17 +175,14 @@ export default function PricingPage() {
         throw new Error('Razorpay API Key ID is not configured on the server. Please add your RAZORPAY_KEY_ID in Vercel Environment Variables.');
       }
 
-      const isINR = orderData.currency === 'INR';
-      const orderDescription = isINR
-        ? `${orderData.plan.name} Architecture ($${orderData.displayPriceUSD} USD ~ ₹${orderData.amountINR?.toLocaleString('en-IN')})`
-        : `${orderData.plan.name} Architecture Package ($${orderData.displayPriceUSD} USD)`;
+      const activePriceUSD = orderData.displayPriceUSD || getPlanPrice(selectedPlan);
 
       const options = {
         key: orderData.keyId,
         amount: orderData.amount,
-        currency: orderData.currency,
+        currency: orderData.currency || 'INR',
         name: 'Spartan Impax Enterprise IT',
-        description: orderDescription,
+        description: `${orderData.plan.name} Architecture Package ($${activePriceUSD} USD)`,
         image: '/assets/spartan-logo.png',
         order_id: orderData.orderId,
         prefill: {
@@ -219,10 +203,10 @@ export default function PricingPage() {
                 orderId: orderData.orderId,
                 paymentId: response.razorpay_payment_id,
                 signature: response.razorpay_signature,
-                paymentMethod: isINR ? 'Razorpay All Channels (UPI/NetBanking/Cards)' : 'Razorpay Direct USD Checkout',
+                paymentMethod: 'Razorpay Multi-Channel Checkout',
                 currency: orderData.currency,
-                amount: isINR ? orderData.amountINR : orderData.displayPriceUSD,
-                priceUSD: orderData.displayPriceUSD,
+                amount: orderData.amountINR || activePriceUSD,
+                priceUSD: activePriceUSD,
                 liveRate: orderData.liveRate,
               }),
             });
@@ -236,11 +220,9 @@ export default function PricingPage() {
               orderId: orderData.orderId,
               paymentId: response.razorpay_payment_id,
               plan: selectedPlan,
-              displayPriceUSD: orderData.displayPriceUSD,
+              amount: activePriceUSD,
+              currency: 'USD',
               amountINR: orderData.amountINR,
-              amount: isINR ? orderData.amountINR : orderData.displayPriceUSD,
-              currency: orderData.currency,
-              liveRate: orderData.liveRate,
               customer: formData,
             });
           } catch (vErr) {
@@ -273,11 +255,11 @@ export default function PricingPage() {
   const faqs = [
     {
       q: 'Which currencies and payment channels do you accept?',
-      a: 'All deliverables and invoices are priced natively in United States Dollars (USD $). To ensure maximum convenience and zero financial loss, you can pay using All Channels: UPI (Google Pay, PhonePe, Paytm, QR Code scan), NetBanking from 50+ banks, Wallets, and domestic/international cards dynamically converted at the exact real-time live interbank exchange rate, or directly in USD via international cards & Apple Pay.'
+      a: 'All deliverables and invoices are priced natively in United States Dollars (USD $). You can pay via Cards (Visa, Mastercard, Amex, RuPay), UPI (Google Pay, PhonePe, Paytm, QR Code scan), NetBanking from 50+ banks, and Wallets. Razorpay automatically processes the transaction smoothly with full multi-channel support.'
     },
     {
-      q: 'How does the real-time live exchange rate guarantee zero loss?',
-      a: 'When checking out via All Channels, our server fetches the real-time interbank foreign exchange rate from live market feeds (e.g. 1 USD = ~₹95.27 INR). This guarantees 100% equivalence to actual dollars with zero arbitrary markups or static discrepancy.'
+      q: 'How does live foreign exchange conversion work?',
+      a: 'Behind the scenes, transactions are calculated using the exact real-time live interbank exchange rate at the second of checkout, ensuring 100% true dollar equivalence with zero arbitrary markups or loss.'
     },
     {
       q: 'Are there any hidden recurring fees or monthly charges?',
@@ -316,21 +298,19 @@ export default function PricingPage() {
             Invest in <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-DEFAULT via-cyan-300 to-blue-400">Production-Grade</span> Engineering
           </h1>
           <p className="text-silver-300 text-base md:text-lg leading-relaxed mb-8">
-            From high-conversion web platforms to mission-critical Oracle Cloud portals and Generative AI studios. Instant checkout powered by Razorpay Global with all payment channels.
+            From high-conversion web platforms to mission-critical Oracle Cloud portals and Generative AI studios. Instant checkout powered by Razorpay Global.
           </p>
 
-          {/* Clean Global USD Currency Pill with Live FX Note */}
+          {/* Clean Global USD Badge without Currency Sync Clutter */}
           <div className="inline-flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-navy-card/90 border border-cyan-DEFAULT/30 shadow-xl backdrop-blur-xl">
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
             <span className="text-xs font-bold uppercase tracking-wider text-white">
-              Global Base Currency: <span className="text-cyan-DEFAULT">USD ($)</span>
+              Global Enterprise Pricing: <span className="text-cyan-DEFAULT">USD ($)</span>
             </span>
             <span className="text-silver-400 text-xs hidden sm:inline">•</span>
-            <span className="text-silver-300 text-xs hidden sm:inline">
-              Live Interbank FX: <span className="text-emerald-400 font-mono font-semibold">1 USD = ₹{liveFxRate} INR</span>
-            </span>
+            <span className="text-silver-300 text-xs hidden sm:inline">All Payment Channels Supported</span>
             <span className="text-silver-400 text-xs hidden sm:inline">•</span>
-            <span className="text-silver-400 text-xs hidden sm:inline">All Channels Enabled (UPI, NetBanking, Cards)</span>
+            <span className="text-silver-400 text-xs hidden sm:inline">256-bit Encrypted</span>
           </div>
         </div>
 
@@ -340,7 +320,6 @@ export default function PricingPage() {
             const isPopular = plan.popular || plan.slug === 'business-fullstack';
             const price = getPlanPrice(plan);
             const originalPrice = getPlanOriginalPrice(plan);
-            const approxINR = Math.round(price * liveFxRate);
 
             return (
               <div
@@ -390,10 +369,6 @@ export default function PricingPage() {
                         </span>
                       </div>
                     )}
-                    <div className="mt-2 pt-2 border-t border-navy-border/50 text-[11px] text-silver-400 flex items-center justify-between">
-                      <span>Live FX conversion:</span>
-                      <span className="text-cyan-DEFAULT font-mono font-medium">≈ ₹{approxINR.toLocaleString('en-IN')} INR</span>
-                    </div>
                   </div>
 
                   {/* Feature List */}
@@ -456,7 +431,7 @@ export default function PricingPage() {
             <div>
               <h4 className="font-bold text-white text-sm mb-1">All Channels: UPI, NetBanking & Cards</h4>
               <p className="text-silver-300 text-xs leading-relaxed">
-                Pay with Google Pay, PhonePe, Paytm, instant QR code, 50+ NetBanking options, and domestic or foreign credit/debit cards.
+                Pay with Google Pay, PhonePe, Paytm, instant QR code, 50+ NetBanking options, and domestic or foreign cards.
               </p>
             </div>
           </div>
@@ -466,9 +441,9 @@ export default function PricingPage() {
               <Building2 className="w-5 h-5 text-cyan-DEFAULT" />
             </div>
             <div>
-              <h4 className="font-bold text-white text-sm mb-1">Zero Financial Discrepancy</h4>
+              <h4 className="font-bold text-white text-sm mb-1">Enterprise SLAs & Deliverables</h4>
               <p className="text-silver-300 text-xs leading-relaxed">
-                Orders are calculated at the real-time live interbank exchange rate, ensuring 100% true dollar equivalence.
+                Full intellectual property transfer, NDA protection, and direct access to principal architecture leadership.
               </p>
             </div>
           </div>
@@ -532,93 +507,28 @@ export default function PricingPage() {
                     <CreditCard className="w-6 h-6 text-cyan-DEFAULT" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Razorpay Multi-Channel Checkout</h3>
+                    <h3 className="text-xl font-bold text-white">Razorpay Secure Checkout</h3>
                     <p className="text-xs text-silver-400">Package: {selectedPlan.name} (${getPlanPrice(selectedPlan)} USD)</p>
                   </div>
                 </div>
 
                 {/* Plan Summary Card */}
-                <div className="p-4 rounded-2xl bg-navy border border-navy-border mb-4">
+                <div className="p-4 rounded-2xl bg-navy border border-navy-border mb-6">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs text-silver-400">Selected Architecture Package</p>
                       <h4 className="font-bold text-white text-base">{selectedPlan.name}</h4>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-silver-400">Base Price</p>
+                      <p className="text-xs text-silver-400">Total Investment</p>
                       <span className="text-xl font-black text-cyan-DEFAULT">
                         ${getPlanPrice(selectedPlan).toLocaleString()} USD
                       </span>
                     </div>
                   </div>
-                  {billingMode === 'ALL_CHANNELS' && (
-                    <div className="mt-3 pt-3 border-t border-navy-border/60 flex items-center justify-between text-xs">
-                      <span className="text-silver-300 flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                        Live FX Rate: 1 USD = ₹{liveFxRate}
-                      </span>
-                      <span className="font-bold text-emerald-400 font-mono">
-                        Payable: ₹{Math.round(getPlanPrice(selectedPlan) * liveFxRate).toLocaleString('en-IN')} INR
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Channel Selector */}
-                <div className="mb-5">
-                  <label className="block text-xs font-semibold text-silver-300 uppercase tracking-wider mb-2">
-                    Payment Method Channel
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => setBillingMode('ALL_CHANNELS')}
-                      className={`p-3 rounded-2xl border text-left transition-all relative ${
-                        billingMode === 'ALL_CHANNELS'
-                          ? 'bg-cyan-DEFAULT/15 border-cyan-DEFAULT shadow-[0_0_15px_rgba(0,229,255,0.2)]'
-                          : 'bg-navy border-navy-border hover:border-silver-500'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-bold text-xs text-white flex items-center gap-1.5">
-                          <Sparkles className="w-3.5 h-3.5 text-cyan-DEFAULT" />
-                          All Channels
-                        </span>
-                        {billingMode === 'ALL_CHANNELS' && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-cyan-DEFAULT text-navy-dark uppercase">
-                            Active
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-silver-300 leading-tight">
-                        UPI (QR, GPay, PhonePe), NetBanking 50+ Banks, Wallets & Cards
-                      </p>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setBillingMode('USD')}
-                      className={`p-3 rounded-2xl border text-left transition-all relative ${
-                        billingMode === 'USD'
-                          ? 'bg-cyan-DEFAULT/15 border-cyan-DEFAULT shadow-[0_0_15px_rgba(0,229,255,0.2)]'
-                          : 'bg-navy border-navy-border hover:border-silver-500'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-bold text-xs text-white flex items-center gap-1.5">
-                          <CreditCard className="w-3.5 h-3.5 text-silver-300" />
-                          Direct USD
-                        </span>
-                        {billingMode === 'USD' && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-cyan-DEFAULT text-navy-dark uppercase">
-                            Active
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-silver-300 leading-tight">
-                        International Cards (Visa, Mastercard, Amex) & Apple Pay in USD
-                      </p>
-                    </button>
+                  <div className="mt-2.5 pt-2.5 border-t border-navy-border/60 text-[11px] text-silver-400 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                    <span>All channels enabled at checkout: Cards, UPI, NetBanking & Wallets</span>
                   </div>
                 </div>
 
@@ -686,22 +596,20 @@ export default function PricingPage() {
                       ) : (
                         <>
                           <Lock className="w-4 h-4" />
-                          <span>
-                            {billingMode === 'ALL_CHANNELS'
-                              ? `Pay with Razorpay (All Channels: UPI, NetBanking, Cards)`
-                              : `Pay $${getPlanPrice(selectedPlan).toLocaleString()} USD with Razorpay`}
-                          </span>
+                          <span>Pay ${getPlanPrice(selectedPlan).toLocaleString()} USD with Razorpay</span>
                         </>
                       )}
                     </button>
                   </div>
 
                   <div className="flex items-center justify-center gap-3 text-[11px] text-silver-400 pt-2 flex-wrap">
+                    <span>Cards</span>
+                    <span>•</span>
                     <span>UPI (GPay / PhonePe / QR)</span>
                     <span>•</span>
-                    <span>NetBanking 50+ Banks</span>
+                    <span>NetBanking</span>
                     <span>•</span>
-                    <span>Cards & Wallets</span>
+                    <span>Wallets</span>
                     <span>•</span>
                     <span>256-bit SSL</span>
                   </div>
@@ -733,19 +641,11 @@ export default function PricingPage() {
                     <span className="font-semibold text-white">{paymentSuccess.plan.name}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-silver-400">Package Base Price:</span>
+                    <span className="text-silver-400">Total Charged:</span>
                     <span className="font-bold text-white">
-                      ${Number(paymentSuccess.displayPriceUSD || paymentSuccess.amount).toLocaleString()} USD
+                      ${Number(paymentSuccess.amount).toLocaleString()} USD
                     </span>
                   </div>
-                  {paymentSuccess.amountINR && (
-                    <div className="flex justify-between">
-                      <span className="text-silver-400">Amount Paid (INR @ {paymentSuccess.liveRate}):</span>
-                      <span className="font-bold text-emerald-400">
-                        ₹{Number(paymentSuccess.amountINR).toLocaleString('en-IN')} INR
-                      </span>
-                    </div>
-                  )}
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -759,8 +659,8 @@ export default function PricingPage() {
                         customerEmail: paymentSuccess.customer.email,
                         customerPhone: paymentSuccess.customer.phone,
                         planName: paymentSuccess.plan.name,
-                        amount: paymentSuccess.amountINR || paymentSuccess.displayPriceUSD,
-                        currency: paymentSuccess.currency,
+                        amount: paymentSuccess.amount,
+                        currency: 'USD',
                         status: 'PAID',
                       })
                     }
