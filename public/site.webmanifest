@@ -1,0 +1,21 @@
+{
+  "name": "Spartan Impax Enterprise IT",
+  "short_name": "Spartan Impax",
+  "description": "Enterprise IT Architecture, Full-Stack Engineering, Cloud Solutions & AI Integration",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#040E1A",
+  "theme_color": "#00E5FF",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "64x64",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
