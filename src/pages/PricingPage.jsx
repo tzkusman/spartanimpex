@@ -359,6 +359,7 @@ export default function PricingPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          planId: selectedPlan.id,
           planSlug: selectedPlan.slug,
           customerName: formData.name,
           customerEmail: formData.email,
@@ -417,6 +418,14 @@ export default function PricingPage() {
                 orderId: orderData.orderId,
                 paymentId: response.razorpay_payment_id,
                 signature: response.razorpay_signature,
+                customer: {
+                  name: formData.name,
+                  email: formData.email,
+                  phone: normalizedPhone,
+                },
+                planId: selectedPlan.id,
+                planSlug: selectedPlan.slug,
+                planName: selectedPlan.name,
                 paymentMethod: isUSD ? 'Razorpay Global USD Checkout' : 'Razorpay Multi-Channel (UPI/NetBanking/Cards)',
                 currency: orderData.currency,
                 amount: isUSD ? orderData.displayPrice : orderData.amountINR,

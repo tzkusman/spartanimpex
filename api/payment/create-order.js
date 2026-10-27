@@ -92,7 +92,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { planSlug, customerName, customerEmail, customerPhone, method } = req.body || {};
+    const { planId, planSlug, customerName, customerEmail, customerPhone, method } = req.body || {};
 
     if (!customerEmail || !customerName) {
       return res.status(400).json({ error: 'Full name and corporate email are required for checkout.' });
@@ -111,7 +111,10 @@ export default async function handler(req, res) {
         if (prisma) {
           planData = await prisma.pricingPlan.findFirst({
             where: {
-              slug: normalizedSlug,
+              OR: [
+                ...(planId ? [{ id: planId }] : []),
+                { slug: normalizedSlug },
+              ],
               active: true,
             },
           });
@@ -125,7 +128,7 @@ export default async function handler(req, res) {
       planData = FALLBACK_PLANS[normalizedSlug] || FALLBACK_PLANS['starter-architecture'];
     }
 
-    // 2. Direct USD price from database (e.g. $1, $199, $649, $1699)
+    // 2. Direct USD price from database (e.g. $1, $200, $550, or default)
     const unitPriceUSD = planData.price !== undefined ? Number(planData.price) : 199;
 
     // 3. Routing: UPI & NetBanking (INR via live FX) vs Card & Apple Pay (USD)
@@ -184,22 +187,26 @@ export default async function handler(req, res) {
       });
     }
 
-    // 4. Non-Blocking Database Transaction Log
+    // 4. Synchronously Awaited Database Transaction Log (Prevents serverless freeze dropping records)
     if (prisma) {
-      prisma.paymentTransaction.create({
-        data: {
-          orderId: rzpOrder.id,
-          planSlug: planData.slug,
-          planName: planData.name,
-          amount: Math.round(isUpiNetBanking ? (amountINR || unitPriceUSD) : unitPriceUSD),
-          currency,
-          customerName: customerName.trim(),
-          customerEmail: customerEmail.trim().toLowerCase(),
-          customerPhone: customerPhone ? customerPhone.trim() : null,
-          status: 'PENDING',
-          receipt,
-        },
-      }).catch(dbErr => console.warn('Prisma transaction logging skipped:', dbErr.message));
+      try {
+        await prisma.paymentTransaction.create({
+          data: {
+            orderId: rzpOrder.id,
+            planSlug: planData.slug,
+            planName: planData.name,
+            amount: Math.round(isUpiNetBanking ? (amountINR || unitPriceUSD) : unitPriceUSD),
+            currency,
+            customerName: customerName.trim(),
+            customerEmail: customerEmail.trim().toLowerCase(),
+            customerPhone: customerPhone ? customerPhone.trim() : null,
+            status: 'PENDING',
+            receipt,
+          },
+        });
+      } catch (dbErr) {
+        console.warn('Prisma transaction logging warning in create-order:', dbErr.message);
+      }
     }
 
     return res.status(200).json({

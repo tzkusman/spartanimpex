@@ -50,28 +50,53 @@ export default async function handler(req, res) {
       });
     }
 
-    // Non-blocking database update
+    // Explicitly awaited database persistence for Serverless environments
     if (process.env.DATABASE_URL) {
-      (async () => {
-        try {
-          const { default: prisma } = await import('../../server/src/prisma.js');
-          if (prisma) {
-            await prisma.paymentTransaction.updateMany({
-              where: { orderId },
+      try {
+        const prismaModule = await import('../../server/src/prisma.js');
+        const prisma = prismaModule.default || prismaModule.prisma;
+        if (prisma) {
+          const updateResult = await prisma.paymentTransaction.updateMany({
+            where: { orderId },
+            data: {
+              paymentId,
+              signature,
+              status: 'PAID',
+              paymentMethod: paymentMethod || 'Razorpay Verified',
+              ...(currency && { currency }),
+              ...(amount && { amount: Math.round(Number(amount)) }),
+            },
+          });
+
+          // Resilient Fallback: If create-order didn't record orderId in DB beforehand,
+          // create the PAID record directly so admin transaction audit is never missed
+          if (updateResult.count === 0) {
+            const customerName = (customer && customer.name) ? customer.name.trim() : 'Verified Customer';
+            const customerEmail = (customer && customer.email) ? customer.email.trim().toLowerCase() : 'billing@spartanimpax.com';
+            const customerPhone = (customer && customer.phone) ? customer.phone.trim() : null;
+
+            await prisma.paymentTransaction.create({
               data: {
+                orderId,
                 paymentId,
                 signature,
+                planSlug: planSlug || 'custom-plan',
+                planName: body.planName || 'Spartan Impax Engineering Package',
+                amount: Math.round(Number(amount) || 1),
+                currency: currency || 'USD',
+                customerName,
+                customerEmail,
+                customerPhone,
                 status: 'PAID',
                 paymentMethod: paymentMethod || 'Razorpay Verified',
-                ...(currency && { currency }),
-                ...(amount && { amount: Math.round(Number(amount)) }),
+                receipt: 'rcpt_' + Date.now().toString().slice(-8),
               },
             });
           }
-        } catch (dbErr) {
-          console.warn('DB payment confirmation update skipped:', dbErr.message);
         }
-      })().catch(() => {});
+      } catch (dbErr) {
+        console.error('DB payment confirmation update error in verify-payment:', dbErr.message);
+      }
     }
 
     return res.status(200).json({

@@ -8,12 +8,11 @@ function getPrismaClient() {
     const client = new PrismaClient({
       log: ['warn', 'error'],
     });
-    if (process.env.NODE_ENV !== 'production') {
-      globalForPrisma.prisma = client;
-    }
+    // In serverless, caching prisma on globalThis is essential across function invocations
+    globalForPrisma.prisma = client;
     return client;
   } catch (err) {
-    console.error('⚠️ Warning: PrismaClient failed to initialize:', err.message);
+    console.error('Warning: PrismaClient failed to initialize:', err.message);
     return null;
   }
 }
