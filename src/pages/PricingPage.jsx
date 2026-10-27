@@ -42,6 +42,32 @@ function getInitialPlans() {
   return pricingPlansData;
 }
 
+function normalizePhoneForGateway(phone, isUSD) {
+  if (!phone || !phone.trim()) return '';
+  const trimmed = phone.trim();
+  const digits = trimmed.replace(/[^0-9]/g, '');
+  if (!digits) return '';
+
+  // If user already typed with '+', respect explicit international format
+  if (trimmed.startsWith('+')) {
+    return '+' + digits;
+  }
+
+  // USD Mode: guarantee +1 prefix so Razorpay never prepends +91
+  if (isUSD) {
+    if (digits.startsWith('1')) {
+      return '+' + digits;
+    }
+    return '+1' + digits;
+  }
+
+  // UPI Mode: guarantee +91 prefix
+  if (digits.startsWith('91')) {
+    return '+' + digits;
+  }
+  return '+91' + digits;
+}
+
 function getInitialPaymentMethod() {
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
@@ -208,12 +234,15 @@ export default function PricingPage() {
         throw new Error('Please enter your full name and corporate email.');
       }
 
+      const isUSDMode = (paymentTab === 'CARD_USD');
+      const normalizedPhone = normalizePhoneForGateway(formData.phone, isUSDMode);
+
       const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded) {
         throw new Error('Razorpay SDK failed to load. Please check your internet connection.');
       }
 
-      // Step 1: Create Order on backend with chosen method
+      // Step 1: Create Order on backend with chosen method and normalized phone
       const res = await fetch('/api/payment/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -221,7 +250,7 @@ export default function PricingPage() {
           planSlug: selectedPlan.slug,
           customerName: formData.name,
           customerEmail: formData.email,
-          customerPhone: formData.phone,
+          customerPhone: normalizedPhone,
           method: paymentTab,
         }),
       });
@@ -261,7 +290,7 @@ export default function PricingPage() {
         prefill: {
           name: formData.name,
           email: formData.email,
-          contact: formData.phone || '',
+          contact: normalizedPhone || '',
         },
         theme: {
           color: '#00E5FF',
@@ -677,13 +706,18 @@ export default function PricingPage() {
                     <label className="block text-xs font-semibold text-silver-300 uppercase tracking-wider mb-1.5">
                       Contact / Phone {paymentTab === 'UPI' ? '(Required for UPI QR)' : '(Optional)'}
                     </label>
-                    <input
-                      type="tel"
-                      value={formData.phone}
-                      onChange={(e) => handlePhoneChange(e.target.value)}
-                      placeholder="+91 91323 54275 / +1 (555) 019-2834"
-                      className="w-full px-4 py-3 rounded-xl bg-navy border border-navy-border text-white text-sm focus:outline-none focus:border-cyan-DEFAULT focus:ring-1 focus:ring-cyan-DEFAULT transition-all"
-                    />
+                    <div className="relative flex items-center">
+                      <span className="absolute left-3.5 flex items-center gap-1 text-xs font-bold text-silver-300 pointer-events-none select-none z-10">
+                        {paymentTab === 'CARD_USD' ? '🇺🇸 +1' : '🇮🇳 +91'}
+                      </span>
+                      <input
+                        type="tel"
+                        value={formData.phone}
+                        onChange={(e) => handlePhoneChange(e.target.value)}
+                        placeholder={paymentTab === 'CARD_USD' ? '(555) 019-2834 or 1235486521' : '91323 54275'}
+                        className="w-full pl-20 pr-4 py-3 rounded-xl bg-navy border border-navy-border text-white text-sm focus:outline-none focus:border-cyan-DEFAULT focus:ring-1 focus:ring-cyan-DEFAULT transition-all"
+                      />
+                    </div>
                   </div>
 
                   <div className="pt-2">
