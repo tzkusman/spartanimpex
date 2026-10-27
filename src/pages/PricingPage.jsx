@@ -14,7 +14,7 @@ import {
   Loader2,
   Download,
   X,
-  QrCode,
+  Globe2,
   Building2
 } from 'lucide-react';
 import Container from '../components/common/Container';
@@ -144,7 +144,7 @@ export default function PricingPage() {
         throw new Error('Razorpay SDK failed to load. Please check your internet connection.');
       }
 
-      // Step 1: Create Order on backend (auto-calculates live FX in background)
+      // Step 1: Create Order on backend (natively in USD)
       const res = await fetch('/api/payment/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -175,12 +175,12 @@ export default function PricingPage() {
         throw new Error('Razorpay API Key ID is not configured on the server. Please add your RAZORPAY_KEY_ID in Vercel Environment Variables.');
       }
 
-      const activePriceUSD = orderData.displayPriceUSD || getPlanPrice(selectedPlan);
+      const activePriceUSD = orderData.displayPrice || getPlanPrice(selectedPlan);
 
       const options = {
         key: orderData.keyId,
-        amount: orderData.amount,
-        currency: orderData.currency || 'INR',
+        amount: orderData.amount, // in cents
+        currency: 'USD',
         name: 'Spartan Impax Enterprise IT',
         description: `${orderData.plan.name} Architecture Package ($${activePriceUSD} USD)`,
         image: '/assets/spartan-logo.png',
@@ -203,11 +203,9 @@ export default function PricingPage() {
                 orderId: orderData.orderId,
                 paymentId: response.razorpay_payment_id,
                 signature: response.razorpay_signature,
-                paymentMethod: 'Razorpay Multi-Channel Checkout',
-                currency: orderData.currency,
-                amount: orderData.amountINR || activePriceUSD,
-                priceUSD: activePriceUSD,
-                liveRate: orderData.liveRate,
+                paymentMethod: 'Razorpay Global USD Checkout',
+                currency: 'USD',
+                amount: activePriceUSD,
               }),
             });
 
@@ -222,7 +220,6 @@ export default function PricingPage() {
               plan: selectedPlan,
               amount: activePriceUSD,
               currency: 'USD',
-              amountINR: orderData.amountINR,
               customer: formData,
             });
           } catch (vErr) {
@@ -254,12 +251,12 @@ export default function PricingPage() {
 
   const faqs = [
     {
-      q: 'Which currencies and payment channels do you accept?',
-      a: 'All deliverables and invoices are priced natively in United States Dollars (USD $). You can pay via Cards (Visa, Mastercard, Amex, RuPay), UPI (Google Pay, PhonePe, Paytm, QR Code scan), NetBanking from 50+ banks, and Wallets. Razorpay automatically processes the transaction smoothly with full multi-channel support.'
+      q: 'Which currencies and payment methods do you accept?',
+      a: 'All deliverables and invoices are priced and billed strictly in United States Dollars (USD $). We accept all international and domestic cards (Visa, Mastercard, American Express, RuPay) and Apple Pay. Your card is billed in pure USD with zero arbitrary conversion markups.'
     },
     {
-      q: 'How does live foreign exchange conversion work?',
-      a: 'Behind the scenes, transactions are calculated using the exact real-time live interbank exchange rate at the second of checkout, ensuring 100% true dollar equivalence with zero arbitrary markups or loss.'
+      q: 'How does global USD billing work?',
+      a: 'Regardless of whether you are located in the United States, United Kingdom, India, Europe, or anywhere in the world, the checkout amount is processed directly in USD ($). If your card is issued in another currency, your bank automatically settles the exact dollar amount.'
     },
     {
       q: 'Are there any hidden recurring fees or monthly charges?',
@@ -305,10 +302,10 @@ export default function PricingPage() {
           <div className="inline-flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-navy-card/90 border border-cyan-DEFAULT/30 shadow-xl backdrop-blur-xl">
             <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
             <span className="text-xs font-bold uppercase tracking-wider text-white">
-              Global Enterprise Pricing: <span className="text-cyan-DEFAULT">USD ($)</span>
+              Global Base Currency: <span className="text-cyan-DEFAULT">USD ($)</span>
             </span>
             <span className="text-silver-400 text-xs hidden sm:inline">•</span>
-            <span className="text-silver-300 text-xs hidden sm:inline">All Payment Channels Supported</span>
+            <span className="text-silver-300 text-xs hidden sm:inline">International Cards & Apple Pay</span>
             <span className="text-silver-400 text-xs hidden sm:inline">•</span>
             <span className="text-silver-400 text-xs hidden sm:inline">256-bit Encrypted</span>
           </div>
@@ -402,7 +399,7 @@ export default function PricingPage() {
                     <ArrowRight className="w-4 h-4" />
                   </button>
                   <p className="text-center text-[10px] text-silver-400 mt-2">
-                    Instant Razorpay checkout • All channels supported
+                    Instant Razorpay checkout • Billed in USD
                   </p>
                 </div>
               </div>
@@ -426,12 +423,12 @@ export default function PricingPage() {
 
           <div className="p-6 rounded-2xl bg-navy-card/40 border border-navy-border flex items-start gap-4">
             <div className="w-10 h-10 rounded-xl bg-cyan-DEFAULT/10 border border-cyan-DEFAULT/30 flex items-center justify-center shrink-0">
-              <QrCode className="w-5 h-5 text-cyan-DEFAULT" />
+              <Globe2 className="w-5 h-5 text-cyan-DEFAULT" />
             </div>
             <div>
-              <h4 className="font-bold text-white text-sm mb-1">All Channels: UPI, NetBanking & Cards</h4>
+              <h4 className="font-bold text-white text-sm mb-1">Global USD Card Rails</h4>
               <p className="text-silver-300 text-xs leading-relaxed">
-                Pay with Google Pay, PhonePe, Paytm, instant QR code, 50+ NetBanking options, and domestic or foreign cards.
+                Seamless checkout for clients across the United States, UK, Europe, India, and worldwide via Visa, Mastercard, Amex, and Apple Pay.
               </p>
             </div>
           </div>
@@ -507,7 +504,7 @@ export default function PricingPage() {
                     <CreditCard className="w-6 h-6 text-cyan-DEFAULT" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Razorpay Secure Checkout</h3>
+                    <h3 className="text-xl font-bold text-white">Razorpay Global Checkout</h3>
                     <p className="text-xs text-silver-400">Package: {selectedPlan.name} (${getPlanPrice(selectedPlan)} USD)</p>
                   </div>
                 </div>
@@ -528,7 +525,7 @@ export default function PricingPage() {
                   </div>
                   <div className="mt-2.5 pt-2.5 border-t border-navy-border/60 text-[11px] text-silver-400 flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-                    <span>All channels enabled at checkout: Cards, UPI, NetBanking & Wallets</span>
+                    <span>Global checkout: International & Domestic Cards, Apple Pay</span>
                   </div>
                 </div>
 
@@ -570,13 +567,13 @@ export default function PricingPage() {
 
                   <div>
                     <label className="block text-xs font-semibold text-silver-300 uppercase tracking-wider mb-1.5">
-                      Contact / Phone (Required for UPI & SMS Receipts)
+                      Contact / Phone (Optional for SMS Receipts)
                     </label>
                     <input
                       type="tel"
                       value={formData.phone}
                       onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      placeholder="+91 91323 54275 / +1 (555) 019-2834"
+                      placeholder="+1 (555) 019-2834 / +91 91323 54275"
                       className="w-full px-4 py-3 rounded-xl bg-navy border border-navy-border text-white text-sm focus:outline-none focus:border-cyan-DEFAULT focus:ring-1 focus:ring-cyan-DEFAULT transition-all"
                     />
                   </div>
@@ -603,13 +600,13 @@ export default function PricingPage() {
                   </div>
 
                   <div className="flex items-center justify-center gap-3 text-[11px] text-silver-400 pt-2 flex-wrap">
-                    <span>Cards</span>
+                    <span>Visa</span>
                     <span>•</span>
-                    <span>UPI (GPay / PhonePe / QR)</span>
+                    <span>Mastercard</span>
                     <span>•</span>
-                    <span>NetBanking</span>
+                    <span>American Express</span>
                     <span>•</span>
-                    <span>Wallets</span>
+                    <span>Apple Pay</span>
                     <span>•</span>
                     <span>256-bit SSL</span>
                   </div>
