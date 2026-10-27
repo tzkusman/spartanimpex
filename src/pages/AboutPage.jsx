@@ -1,4 +1,4 @@
-import { GithubIcon, LinkedinIcon } from '../components/common/BrandIcons';
+import { GithubIcon, LinkedinIcon, InstagramIcon } from '../components/common/BrandIcons';
 import React, { useState } from 'react';
 import { 
   Download, 
@@ -243,6 +243,47 @@ export default function AboutPage() {
                   <span>github.com/tzkusman</span>
                 </a>
               </div>
+            </div>
+          </div>
+
+          {/* Corporate Channels & Verified Presence */}
+          <div className="mt-10 p-6 md:p-8 rounded-2xl bg-navy-card border border-navy-border max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-cyan-DEFAULT/10 border border-cyan-DEFAULT/30 flex items-center justify-center text-cyan-DEFAULT shrink-0">
+                <Shield className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-base font-serif font-bold text-white flex items-center gap-2">
+                  <span>Official Corporate Channels</span>
+                  <span className="w-2 h-2 rounded-full bg-cyan-DEFAULT animate-pulse" />
+                </h4>
+                <p className="text-xs text-navy-200 mt-0.5">
+                  Follow Spartan Impex IT Services for enterprise updates, case studies, and engineering culture.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 shrink-0">
+              <a
+                href={personalData.socials.companyLinkedin || "https://www.linkedin.com/company/spartan-impex-it-services/"}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Spartan Impex IT Services on LinkedIn (Company Page)"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-navy border border-navy-border text-xs font-semibold text-silver-200 hover:text-cyan-DEFAULT hover:border-cyan-DEFAULT/60 hover:shadow-[0_0_12px_rgba(0,229,255,0.3)] transition-all duration-300"
+              >
+                <LinkedinIcon size={16} />
+                <span>LinkedIn Company Page</span>
+              </a>
+              <a
+                href={personalData.socials.instagram || "https://www.instagram.com/spartanimpex/"}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Spartan Impex on Instagram (@spartanimpex)"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-navy border border-navy-border text-xs font-semibold text-silver-200 hover:text-pink-400 hover:border-pink-500/60 hover:shadow-[0_0_12px_rgba(236,72,153,0.3)] transition-all duration-300"
+              >
+                <InstagramIcon size={16} />
+                <span>Instagram @spartanimpex</span>
+              </a>
             </div>
           </div>
         </Container>

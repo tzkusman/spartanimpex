@@ -1,10 +1,22 @@
 import React from 'react';
 import { Mail } from 'lucide-react';
-import { GithubIcon, LinkedinIcon } from './BrandIcons';
+import { GithubIcon, LinkedinIcon, InstagramIcon } from './BrandIcons';
 import { personalData } from '../../data/portfolioData';
 
 export default function SocialLinks({ className = '', iconSize = 18, variant = 'minimal' }) {
   const links = [
+    {
+      name: 'Spartan Impex IT Services on LinkedIn (Company Page)',
+      href: personalData.socials.companyLinkedin || 'https://www.linkedin.com/company/spartan-impex-it-services/',
+      icon: LinkedinIcon,
+      label: 'LinkedIn Company Page',
+    },
+    {
+      name: 'Spartan Impex on Instagram (@spartanimpex)',
+      href: personalData.socials.instagram || 'https://www.instagram.com/spartanimpex/',
+      icon: InstagramIcon,
+      label: 'Instagram',
+    },
     {
       name: 'GitHub (tzkusman)',
       href: personalData.socials.github || 'https://github.com/tzkusman/',
@@ -16,12 +28,6 @@ export default function SocialLinks({ className = '', iconSize = 18, variant = '
       href: personalData.socials.linkedin || 'https://www.linkedin.com/in/gajender-singh-rajawat-859547430/',
       icon: LinkedinIcon,
       label: 'CEO LinkedIn',
-    },
-    {
-      name: 'CIO LinkedIn (Usman)',
-      href: personalData.socials.cioLinkedin || 'https://www.linkedin.com/in/generalusman/',
-      icon: LinkedinIcon,
-      label: 'CIO LinkedIn',
     },
     {
       name: 'Corporate Inquiries',

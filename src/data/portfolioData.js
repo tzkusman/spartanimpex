@@ -38,6 +38,8 @@ export const personalData = {
     }
   ],
   socials: {
+    companyLinkedin: "https://www.linkedin.com/company/spartan-impex-it-services/",
+    instagram: "https://www.instagram.com/spartanimpex/",
     github: "https://github.com/tzkusman/",
     linkedin: "https://www.linkedin.com/in/gajender-singh-rajawat-859547430/",
     cioLinkedin: "https://www.linkedin.com/in/generalusman/",
