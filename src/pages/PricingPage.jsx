@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Check,
@@ -16,7 +16,8 @@ import {
   X,
   QrCode,
   Globe2,
-  Building2
+  Building2,
+  Search
 } from 'lucide-react';
 import Container from '../components/common/Container';
 import { pricingPlansData } from '../data/portfolioData';
@@ -42,30 +43,125 @@ function getInitialPlans() {
   return pricingPlansData;
 }
 
-function normalizePhoneForGateway(phone, isUSD) {
+export const COUNTRIES = [
+  { code: 'US', dial: '+1', flag: '🇺🇸', name: 'United States' },
+  { code: 'IN', dial: '+91', flag: '🇮🇳', name: 'India' },
+  { code: 'GB', dial: '+44', flag: '🇬🇧', name: 'United Kingdom' },
+  { code: 'CA', dial: '+1', flag: '🇨🇦', name: 'Canada' },
+  { code: 'AU', dial: '+61', flag: '🇦🇺', name: 'Australia' },
+  { code: 'AE', dial: '+971', flag: '🇦🇪', name: 'United Arab Emirates' },
+  { code: 'DE', dial: '+49', flag: '🇩🇪', name: 'Germany' },
+  { code: 'FR', dial: '+33', flag: '🇫🇷', name: 'France' },
+  { code: 'SG', dial: '+65', flag: '🇸🇬', name: 'Singapore' },
+  { code: 'SA', dial: '+966', flag: '🇸🇦', name: 'Saudi Arabia' },
+  { code: 'NL', dial: '+31', flag: '🇳🇱', name: 'Netherlands' },
+  { code: 'CH', dial: '+41', flag: '🇨🇭', name: 'Switzerland' },
+  { code: 'SE', dial: '+46', flag: '🇸🇪', name: 'Sweden' },
+  { code: 'ES', dial: '+34', flag: '🇪🇸', name: 'Spain' },
+  { code: 'IT', dial: '+39', flag: '🇮🇹', name: 'Italy' },
+  { code: 'JP', dial: '+81', flag: '🇯🇵', name: 'Japan' },
+  { code: 'NZ', dial: '+64', flag: '🇳🇿', name: 'New Zealand' },
+  { code: 'IE', dial: '+353', flag: '🇮🇪', name: 'Ireland' },
+  { code: 'NO', dial: '+47', flag: '🇳🇴', name: 'Norway' },
+  { code: 'DK', dial: '+45', flag: '🇩🇰', name: 'Denmark' },
+  { code: 'FI', dial: '+358', flag: '🇫🇮', name: 'Finland' },
+  { code: 'BR', dial: '+55', flag: '🇧🇷', name: 'Brazil' },
+  { code: 'MX', dial: '+52', flag: '🇲🇽', name: 'Mexico' },
+  { code: 'ZA', dial: '+27', flag: '🇿🇦', name: 'South Africa' },
+  { code: 'MY', dial: '+60', flag: '🇲🇾', name: 'Malaysia' },
+  { code: 'ID', dial: '+62', flag: '🇮🇩', name: 'Indonesia' },
+  { code: 'PH', dial: '+63', flag: '🇵🇭', name: 'Philippines' },
+  { code: 'PK', dial: '+92', flag: '🇵🇰', name: 'Pakistan' },
+  { code: 'BD', dial: '+880', flag: '🇧🇩', name: 'Bangladesh' },
+  { code: 'KR', dial: '+82', flag: '🇰🇷', name: 'South Korea' },
+  { code: 'HK', dial: '+852', flag: '🇭🇰', name: 'Hong Kong' },
+  { code: 'TH', dial: '+66', flag: '🇹🇭', name: 'Thailand' },
+  { code: 'VN', dial: '+84', flag: '🇻🇳', name: 'Vietnam' },
+  { code: 'QA', dial: '+974', flag: '🇶🇦', name: 'Qatar' },
+  { code: 'KW', dial: '+965', flag: '🇰🇼', name: 'Kuwait' },
+  { code: 'OM', dial: '+968', flag: '🇴🇲', name: 'Oman' },
+  { code: 'BH', dial: '+973', flag: '🇧🇭', name: 'Bahrain' },
+  { code: 'EG', dial: '+20', flag: '🇪🇬', name: 'Egypt' },
+  { code: 'NG', dial: '+234', flag: '🇳🇬', name: 'Nigeria' },
+  { code: 'KE', dial: '+254', flag: '🇰🇪', name: 'Kenya' },
+  { code: 'IL', dial: '+972', flag: '🇮🇱', name: 'Israel' },
+  { code: 'TR', dial: '+90', flag: '🇹🇷', name: 'Turkey' },
+  { code: 'PL', dial: '+48', flag: '🇵🇱', name: 'Poland' },
+  { code: 'BE', dial: '+32', flag: '🇧🇪', name: 'Belgium' },
+  { code: 'AT', dial: '+43', flag: '🇦🇹', name: 'Austria' },
+  { code: 'PT', dial: '+351', flag: '🇵🇹', name: 'Portugal' },
+  { code: 'GR', dial: '+30', flag: '🇬🇷', name: 'Greece' },
+  { code: 'RU', dial: '+7', flag: '🇷🇺', name: 'Russia' },
+  { code: 'CN', dial: '+86', flag: '🇨🇳', name: 'China' },
+];
+
+const COUNTRIES_BY_DIAL_DESC = [...COUNTRIES].sort((a, b) => b.dial.length - a.dial.length);
+
+function matchCountryFromPhone(rawPhone) {
+  if (!rawPhone) return null;
+  const clean = rawPhone.trim();
+  const digits = clean.replace(/[^0-9]/g, '');
+
+  if (clean.startsWith('+')) {
+    for (const c of COUNTRIES_BY_DIAL_DESC) {
+      if (clean.startsWith(c.dial)) {
+        return c;
+      }
+    }
+  }
+
+  for (const c of COUNTRIES_BY_DIAL_DESC) {
+    const dialDigits = c.dial.replace('+', '');
+    if (digits.startsWith(dialDigits) && digits.length >= dialDigits.length + 7) {
+      return c;
+    }
+  }
+
+  // 10-digit Indian mobile starting with 6-9
+  if (digits.length === 10 && /^[6-9]/.test(digits)) {
+    return COUNTRIES.find((c) => c.code === 'IN') || null;
+  }
+
+  // 10-digit US mobile or 11-digit starting with 1
+  if ((digits.length === 10 && /^[2-9]/.test(digits)) || (digits.length === 11 && digits.startsWith('1'))) {
+    return COUNTRIES.find((c) => c.code === 'US') || null;
+  }
+
+  return null;
+}
+
+function normalizePhoneForGateway(phone, selectedCountry) {
   if (!phone || !phone.trim()) return '';
   const trimmed = phone.trim();
   const digits = trimmed.replace(/[^0-9]/g, '');
   if (!digits) return '';
 
-  // If user already typed with '+', respect explicit international format
   if (trimmed.startsWith('+')) {
     return '+' + digits;
   }
 
-  // USD Mode: guarantee +1 prefix so Razorpay never prepends +91
-  if (isUSD) {
-    if (digits.startsWith('1')) {
+  const dialCode = selectedCountry?.dial || '+1';
+  const dialDigits = dialCode.replace(/[^0-9]/g, '');
+
+  if (dialDigits === '91') {
+    if (digits.length === 12 && digits.startsWith('91')) {
+      return '+' + digits;
+    }
+    return '+91' + digits;
+  }
+
+  if (dialDigits === '1') {
+    if (digits.length === 11 && digits.startsWith('1')) {
       return '+' + digits;
     }
     return '+1' + digits;
   }
 
-  // UPI Mode: guarantee +91 prefix
-  if (digits.startsWith('91')) {
+  if (digits.startsWith(dialDigits) && digits.length >= dialDigits.length + 8) {
     return '+' + digits;
   }
-  return '+91' + digits;
+
+  return dialCode + digits;
 }
 
 function getInitialPaymentMethod() {
@@ -92,6 +188,29 @@ export default function PricingPage() {
   const [paymentError, setPaymentError] = useState(null);
   const [paymentSuccess, setPaymentSuccess] = useState(null);
   const [openFaq, setOpenFaq] = useState(null);
+  const [selectedCountry, setSelectedCountry] = useState(() => {
+    return getInitialPaymentMethod() === 'UPI'
+      ? COUNTRIES.find((c) => c.code === 'IN') || COUNTRIES[1]
+      : COUNTRIES[0];
+  });
+  const [isCountryPickerOpen, setIsCountryPickerOpen] = useState(false);
+  const [countrySearchQuery, setCountrySearchQuery] = useState('');
+  const countryPickerRef = useRef(null);
+
+  // Close country picker on click outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (countryPickerRef.current && !countryPickerRef.current.contains(event.target)) {
+        setIsCountryPickerOpen(false);
+      }
+    }
+    if (isCountryPickerOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isCountryPickerOpen]);
 
   // Auto Geo-Detection: Detect country via Vercel Edge IP header
   useEffect(() => {
@@ -101,7 +220,13 @@ export default function PricingPage() {
       .then((data) => {
         if (data?.recommendedMethod && isMounted) {
           setPaymentTab(data.recommendedMethod);
-          if (data.country) setGeoCountry(data.country);
+          if (data.country) {
+            setGeoCountry(data.country);
+            const matched = COUNTRIES.find((c) => c.code === data.country);
+            if (matched) {
+              setSelectedCountry(matched);
+            }
+          }
         }
       })
       .catch((err) => console.warn('Geo-detection skipped, using local timezone:', err.message));
@@ -200,27 +325,15 @@ export default function PricingPage() {
 
   const handlePhoneChange = (val) => {
     setFormData((prev) => ({ ...prev, phone: val }));
-    const clean = val.trim();
-    const digitsOnly = val.replace(/[^0-9]/g, '');
 
-    // 1. Explicit Indian phone detection (e.g. +91..., 91..., or 10-digit Indian numbers starting with 6-9)
-    if (
-      clean.startsWith('+91') ||
-      (digitsOnly.startsWith('91') && digitsOnly.length >= 11) ||
-      (digitsOnly.length === 10 && /^[6-9]/.test(digitsOnly))
-    ) {
-      setPaymentTab('UPI');
-    }
-    // 2. Explicit US & International phone detection (e.g. +1..., +44..., or 11-digit numbers starting with 1)
-    else if (
-      clean.startsWith('+1') ||
-      clean.startsWith('+44') ||
-      clean.startsWith('+61') ||
-      clean.startsWith('+49') ||
-      clean.startsWith('+971') ||
-      (digitsOnly.startsWith('1') && digitsOnly.length === 11)
-    ) {
-      setPaymentTab('CARD_USD');
+    const detected = matchCountryFromPhone(val);
+    if (detected) {
+      setSelectedCountry(detected);
+      if (detected.code === 'IN') {
+        setPaymentTab('UPI');
+      } else {
+        setPaymentTab('CARD_USD');
+      }
     }
   };
 
@@ -234,8 +347,7 @@ export default function PricingPage() {
         throw new Error('Please enter your full name and corporate email.');
       }
 
-      const isUSDMode = (paymentTab === 'CARD_USD');
-      const normalizedPhone = normalizePhoneForGateway(formData.phone, isUSDMode);
+      const normalizedPhone = normalizePhoneForGateway(formData.phone, selectedCountry);
 
       const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded) {
@@ -642,7 +754,13 @@ export default function PricingPage() {
                 <div className="flex p-1 bg-navy rounded-2xl border border-navy-border mb-5">
                   <button
                     type="button"
-                    onClick={() => setPaymentTab('UPI')}
+                    onClick={() => {
+                      setPaymentTab('UPI');
+                      if (selectedCountry.code !== 'IN' && !formData.phone) {
+                        const india = COUNTRIES.find((c) => c.code === 'IN');
+                        if (india) setSelectedCountry(india);
+                      }
+                    }}
                     className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
                       paymentTab === 'UPI'
                         ? 'bg-cyan-DEFAULT text-navy-dark shadow-md'
@@ -654,7 +772,13 @@ export default function PricingPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setPaymentTab('CARD_USD')}
+                    onClick={() => {
+                      setPaymentTab('CARD_USD');
+                      if (selectedCountry.code === 'IN' && !formData.phone) {
+                        const target = COUNTRIES.find((c) => c.code === (geoCountry || 'US')) || COUNTRIES[0];
+                        setSelectedCountry(target);
+                      }
+                    }}
                     className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
                       paymentTab === 'CARD_USD'
                         ? 'bg-cyan-DEFAULT text-navy-dark shadow-md'
@@ -702,22 +826,105 @@ export default function PricingPage() {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-silver-300 uppercase tracking-wider mb-1.5">
-                      Contact / Phone {paymentTab === 'UPI' ? '(Required for UPI QR)' : '(Optional)'}
+                  <div className="relative" ref={countryPickerRef}>
+                    <label className="block text-xs font-semibold text-silver-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                      <span>Contact / Phone {paymentTab === 'UPI' ? '(Required for UPI QR)' : '(Optional)'}</span>
+                      <span className="text-[11px] text-cyan-DEFAULT font-normal normal-case">
+                        {selectedCountry.name} ({selectedCountry.dial})
+                      </span>
                     </label>
                     <div className="relative flex items-center">
-                      <span className="absolute left-3.5 flex items-center gap-1 text-xs font-bold text-silver-300 pointer-events-none select-none z-10">
-                        {paymentTab === 'CARD_USD' ? '🇺🇸 +1' : '🇮🇳 +91'}
-                      </span>
+                      {/* Interactive Country Code Selector Button */}
+                      <button
+                        type="button"
+                        onClick={() => setIsCountryPickerOpen((prev) => !prev)}
+                        className="absolute left-1.5 top-1.5 bottom-1.5 z-20 flex items-center gap-1.5 px-2.5 rounded-lg bg-navy-card/95 border border-navy-border hover:border-cyan-DEFAULT/60 text-white text-xs font-bold transition-all focus:outline-none focus:ring-1 focus:ring-cyan-DEFAULT shadow-sm cursor-pointer"
+                        title={`Country: ${selectedCountry.name} (${selectedCountry.dial}). Click to select from 50+ countries.`}
+                        aria-label="Select country code"
+                      >
+                        <span className="text-sm leading-none">{selectedCountry.flag}</span>
+                        <span className="text-silver-200">{selectedCountry.dial}</span>
+                        <ChevronDown className={`w-3 h-3 text-silver-400 transition-transform duration-200 ${isCountryPickerOpen ? 'rotate-180 text-cyan-DEFAULT' : ''}`} />
+                      </button>
+
                       <input
                         type="tel"
                         value={formData.phone}
                         onChange={(e) => handlePhoneChange(e.target.value)}
-                        placeholder={paymentTab === 'CARD_USD' ? '(555) 019-2834 or 1235486521' : '91323 54275'}
-                        className="w-full pl-20 pr-4 py-3 rounded-xl bg-navy border border-navy-border text-white text-sm focus:outline-none focus:border-cyan-DEFAULT focus:ring-1 focus:ring-cyan-DEFAULT transition-all"
+                        placeholder={
+                          selectedCountry.code === 'US' || selectedCountry.code === 'CA'
+                            ? '(555) 019-2834'
+                            : selectedCountry.code === 'IN'
+                            ? '91323 54275'
+                            : selectedCountry.code === 'GB'
+                            ? '7911 123456'
+                            : selectedCountry.code === 'AE'
+                            ? '50 123 4567'
+                            : 'Enter local number or +...'
+                        }
+                        className="w-full pl-28 pr-4 py-3 rounded-xl bg-navy border border-navy-border text-white text-sm focus:outline-none focus:border-cyan-DEFAULT focus:ring-1 focus:ring-cyan-DEFAULT transition-all"
                       />
                     </div>
+
+                    {/* Floating Luxury Country Dropdown Menu */}
+                    {isCountryPickerOpen && (
+                      <div className="absolute left-0 bottom-full mb-2 w-full max-w-sm z-50 rounded-2xl bg-[#071525]/95 border border-cyan-DEFAULT/40 shadow-[0_10px_35px_rgba(0,0,0,0.8)] p-3 backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-150">
+                        {/* Search Input */}
+                        <div className="relative mb-2">
+                          <Search className="w-3.5 h-3.5 text-silver-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="text"
+                            value={countrySearchQuery}
+                            onChange={(e) => setCountrySearchQuery(e.target.value)}
+                            placeholder="Search country or code (e.g. 44, UK, Dubai)..."
+                            autoFocus
+                            className="w-full pl-8 pr-3 py-2 text-xs rounded-xl bg-navy border border-navy-border text-white focus:outline-none focus:border-cyan-DEFAULT"
+                          />
+                        </div>
+
+                        {/* Country List */}
+                        <div className="max-h-52 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                          {COUNTRIES.filter((c) => {
+                            const query = countrySearchQuery.trim().toLowerCase();
+                            if (!query) return true;
+                            return (
+                              c.name.toLowerCase().includes(query) ||
+                              c.dial.includes(query) ||
+                              c.code.toLowerCase().includes(query)
+                            );
+                          }).map((c) => {
+                            const isSelected = selectedCountry.code === c.code;
+                            return (
+                              <button
+                                key={c.code}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedCountry(c);
+                                  setIsCountryPickerOpen(false);
+                                  setCountrySearchQuery('');
+                                  if (c.code === 'IN') {
+                                    setPaymentTab('UPI');
+                                  } else {
+                                    setPaymentTab('CARD_USD');
+                                  }
+                                }}
+                                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-colors text-left cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-cyan-DEFAULT/20 text-cyan-DEFAULT border border-cyan-DEFAULT/40 font-bold'
+                                    : 'text-silver-200 hover:bg-navy-card hover:text-white'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 truncate">
+                                  <span className="text-base">{c.flag}</span>
+                                  <span className="truncate">{c.name}</span>
+                                </div>
+                                <span className="text-silver-400 font-mono text-[11px] shrink-0 ml-2">{c.dial}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="pt-2">
