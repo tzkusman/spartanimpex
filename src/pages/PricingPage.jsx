@@ -42,17 +42,47 @@ function getInitialPlans() {
   return pricingPlansData;
 }
 
+function getInitialPaymentMethod() {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    if (tz === 'Asia/Kolkata' || tz === 'Asia/Calcutta') {
+      return 'UPI';
+    }
+  } catch {
+    // fallback
+  }
+  return 'CARD_USD';
+}
+
 export default function PricingPage() {
   const [plans, setPlans] = useState(getInitialPlans);
   const [loading, setLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [paymentTab, setPaymentTab] = useState('UPI'); // 'UPI' or 'CARD_USD'
+  const [paymentTab, setPaymentTab] = useState(getInitialPaymentMethod); // 'CARD_USD' for International, 'UPI' for India
+  const [geoCountry, setGeoCountry] = useState(null);
   const [formData, setFormData] = useState({ name: '', email: '', phone: '' });
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState(null);
   const [paymentSuccess, setPaymentSuccess] = useState(null);
   const [openFaq, setOpenFaq] = useState(null);
+
+  // Auto Geo-Detection: Detect country via Vercel Edge IP header
+  useEffect(() => {
+    let isMounted = true;
+    fetch('/api/payment/geo')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.recommendedMethod && isMounted) {
+          setPaymentTab(data.recommendedMethod);
+          if (data.country) setGeoCountry(data.country);
+        }
+      })
+      .catch((err) => console.warn('Geo-detection skipped, using local timezone:', err.message));
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Silent background revalidation: checks PostgreSQL for any admin updates
   useEffect(() => {
@@ -132,11 +162,24 @@ export default function PricingPage() {
   };
 
   const handlePhoneChange = (val) => {
-    setFormData({ ...formData, phone: val });
+    setFormData((prev) => ({ ...prev, phone: val }));
     const clean = val.trim();
-    if (clean.startsWith('+1') || clean.startsWith('+44') || clean.startsWith('+61') || clean.startsWith('+49')) {
+    const digitsOnly = val.replace(/[^0-9]/g, '');
+
+    // US & International phone detection (with or without '+')
+    if (
+      clean.startsWith('+1') ||
+      clean.startsWith('+44') ||
+      clean.startsWith('+61') ||
+      clean.startsWith('+49') ||
+      clean.startsWith('+971') ||
+      (digitsOnly.startsWith('1') && digitsOnly.length >= 10)
+    ) {
       setPaymentTab('CARD_USD');
-    } else if (clean.startsWith('+91')) {
+    } else if (
+      clean.startsWith('+91') ||
+      (digitsOnly.startsWith('91') && digitsOnly.length >= 11)
+    ) {
       setPaymentTab('UPI');
     }
   };
