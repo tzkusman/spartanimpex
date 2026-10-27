@@ -70,7 +70,7 @@ export default function PricingPage() {
   // Auto Geo-Detection: Detect country via Vercel Edge IP header
   useEffect(() => {
     let isMounted = true;
-    fetch('/api/payment/geo')
+    fetch('/api/geo')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.recommendedMethod && isMounted) {

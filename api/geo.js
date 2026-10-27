@@ -5,32 +5,20 @@ export default function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   // Read Vercel Edge Geolocation header
-  const countryHeader = req.headers['x-vercel-ip-country'];
-  const country = typeof countryHeader === 'string' ? countryHeader.toUpperCase() : 'US';
+  const countryHeader = req.headers['x-vercel-ip-country'] || req.headers['cf-ipcountry'] || '';
+  const country = typeof countryHeader === 'string' && countryHeader ? countryHeader.toUpperCase().trim() : 'US';
+  const isIndia = (country === 'IN');
   const city = req.headers['x-vercel-ip-city'] || 'Global';
 
-  const countryToCurrencyMap = {
-    US: 'USD',
-    JP: 'JPY',
-    IN: 'INR',
-    GB: 'GBP',
-    DE: 'EUR',
-    FR: 'EUR',
-    IT: 'EUR',
-    ES: 'EUR',
-    NL: 'EUR',
-    AE: 'AED',
-    CA: 'CAD',
-    AU: 'AUD',
-    SG: 'SGD',
-  };
-
-  const currency = countryToCurrencyMap[country] || 'USD';
+  // Cache for 10 minutes at CDN edge, 60 seconds on client
+  res.setHeader('Cache-Control', 'public, s-maxage=600, max-age=60');
 
   return res.status(200).json({
     country,
+    isIndia,
+    recommendedMethod: isIndia ? 'UPI' : 'CARD_USD',
     city,
-    currency,
+    currency: isIndia ? 'INR' : 'USD',
     timestamp: new Date().toISOString()
   });
 }
