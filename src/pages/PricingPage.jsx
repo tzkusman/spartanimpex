@@ -70,7 +70,7 @@ export default function PricingPage() {
   // Auto Geo-Detection: Detect country via Vercel Edge IP header
   useEffect(() => {
     let isMounted = true;
-    fetch('/api/geo')
+    fetch(`/api/geo?_t=${Date.now()}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.recommendedMethod && isMounted) {
@@ -159,6 +159,17 @@ export default function PricingPage() {
     setPaymentError(null);
     setPaymentSuccess(null);
     setIsModalOpen(true);
+
+    // Refresh geo check on modal open with zero cache
+    fetch(`/api/geo?_t=${Date.now()}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.recommendedMethod) {
+          setPaymentTab(data.recommendedMethod);
+          if (data.country) setGeoCountry(data.country);
+        }
+      })
+      .catch(() => {});
   };
 
   const handlePhoneChange = (val) => {
@@ -166,21 +177,24 @@ export default function PricingPage() {
     const clean = val.trim();
     const digitsOnly = val.replace(/[^0-9]/g, '');
 
-    // US & International phone detection (with or without '+')
+    // 1. Explicit Indian phone detection (e.g. +91..., 91..., or 10-digit Indian numbers starting with 6-9)
     if (
+      clean.startsWith('+91') ||
+      (digitsOnly.startsWith('91') && digitsOnly.length >= 11) ||
+      (digitsOnly.length === 10 && /^[6-9]/.test(digitsOnly))
+    ) {
+      setPaymentTab('UPI');
+    }
+    // 2. Explicit US & International phone detection (e.g. +1..., +44..., or 11-digit numbers starting with 1)
+    else if (
       clean.startsWith('+1') ||
       clean.startsWith('+44') ||
       clean.startsWith('+61') ||
       clean.startsWith('+49') ||
       clean.startsWith('+971') ||
-      (digitsOnly.startsWith('1') && digitsOnly.length >= 10)
+      (digitsOnly.startsWith('1') && digitsOnly.length === 11)
     ) {
       setPaymentTab('CARD_USD');
-    } else if (
-      clean.startsWith('+91') ||
-      (digitsOnly.startsWith('91') && digitsOnly.length >= 11)
-    ) {
-      setPaymentTab('UPI');
     }
   };
 
