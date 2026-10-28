@@ -16,7 +16,8 @@
 7. [Phase 5: The "Pending Status" Root Cause & Serverless Async Fix](#7-phase-5-the-pending-status-root-cause--serverless-async-fix)
 8. [Phase 6: Real-Time Razorpay Gateway Reconciliation in Admin Panel](#8-phase-6-real-time-razorpay-gateway-reconciliation-in-admin-panel)
 9. [Phase 7: SEO, Social Connectivity & Legacy WordPress Cache Purge](#9-phase-7-seo-social-connectivity--legacy-wordpress-cache-purge)
-10. [Developer Runbook & Deployment Guide](#10-developer-runbook--deployment-guide)
+10. [Phase 8: EmailJS Automated Client Order Receipt Engine](#10-phase-8-emailjs-automated-client-order-receipt-engine)
+11. [Developer Runbook & Deployment Guide](#11-developer-runbook--deployment-guide)
 
 ---
 
@@ -338,7 +339,40 @@ To give the administrator complete oversight over every transaction (even if a u
 
 ---
 
-## 10. Developer Runbook & Deployment Guide
+## 10. Phase 8: EmailJS Automated Client Order Receipt Engine
+
+### The Problem
+When a customer purchased an architecture package on `/pricing`, their transaction was verified and recorded in the database, but they needed an immediate, automated branded email receipt delivered directly to the inbox of whatever email they typed into the checkout form (`formData.email`).
+
+### The Solution: Serverless REST API Dispatch
+Instead of relying on a client-side SDK that exposes credentials or adding another serverless function that breaches Vercel Hobby's 12-function cap, we integrated EmailJS directly into [verify-payment.js](file:///e:/spartan-impax-portfolio%20(2)/spartan-impex-portfolio/api/payment/verify-payment.js) via its official **REST API v1.0** (`https://api.emailjs.com/api/v1.0/email/send`):
+
+1. **Secure Private Authentication**:
+   - Uses EmailJS's backend parameter `accessToken: process.env.EMAILJS_PRIVATE_KEY` (`RjTW321UbfBEhRV2OfHmW`) alongside `user_id: process.env.EMAILJS_PUBLIC_KEY` (`aGQQEQqpZMy3SmeHg`).
+   - Private credentials are never transmitted to the browser or exposed in client DOM.
+
+2. **Guaranteed Post-Verification Trigger**:
+   - The receipt is only dispatched *after* Razorpay HMAC SHA-256 signature verification succeeds and the database commit to PostgreSQL is confirmed.
+
+3. **Dynamic Template Routing**:
+   - Dispatches full details to the buyer's email:
+     - `to_name`: Customer Name
+     - `to_email`: Customer Email (entered during checkout)
+     - `package_name`: Purchased Architecture Package
+     - `order_id`: Razorpay Order ID
+     - `payment_id`: Razorpay Payment ID
+     - `amount`: Formatted Amount (`$1 USD`, `$200 USD`, `$550 USD`, or `₹ INR`)
+     - `payment_method`: Selected Rail (Card USD / UPI Domestic)
+     - `status`: `PAID`
+     - `customer_phone`: Normalized phone number
+     - `date`: Formatted local timestamp
+
+4. **UI Confirmation Indicator**:
+   - In [PricingPage.jsx](file:///e:/spartan-impax-portfolio%20(2)/spartan-impax-portfolio/src/pages/PricingPage.jsx), the payment success modal displays a distinct confirmation badge notifying the client that their official tax receipt and onboarding instructions have been dispatched to their email address.
+
+---
+
+## 11. Developer Runbook & Deployment Guide
 
 ### Required Environment Variables (.env / Vercel Dashboard)
 | Variable | Description |
@@ -347,6 +381,10 @@ To give the administrator complete oversight over every transaction (even if a u
 | `RAZORPAY_KEY_ID` | Live Razorpay API Key (`rzp_live_...`) |
 | `RAZORPAY_KEY_SECRET` | Live Razorpay API Secret Key |
 | `JWT_SECRET` | Secret key for admin JWT session authentication |
+| `EMAILJS_PUBLIC_KEY` | EmailJS Public Key (`aGQQEQqpZMy3SmeHg`) |
+| `EMAILJS_PRIVATE_KEY` | EmailJS Private Key / Access Token (`RjTW321UbfBEhRV2OfHmW`) |
+| `EMAILJS_SERVICE_ID` | Connected Email Service (e.g., `service_xxxxxxx`) |
+| `EMAILJS_TEMPLATE_ID` | Branded Receipt Template (e.g., `template_xxxxxxx`) |
 
 ### Build Validation Command
 Before pushing to production, verify the project builds with 0 errors:

@@ -17,6 +17,7 @@ import {
   QrCode,
   Globe2,
   Building2,
+  Mail,
   Search
 } from 'lucide-react';
 import Container from '../components/common/Container';
@@ -447,6 +448,7 @@ export default function PricingPage() {
               priceUSD: orderData.displayPrice,
               amountINR: orderData.amountINR,
               customer: formData,
+              emailSent: verifyData?.emailSent,
             });
           } catch (vErr) {
             setPaymentError(vErr.message);
@@ -994,9 +996,16 @@ export default function PricingPage() {
                 </div>
 
                 <h3 className="text-2xl font-bold text-white mb-2">Payment Successfully Verified!</h3>
-                <p className="text-silver-300 text-sm mb-6">
+                <p className="text-silver-300 text-sm mb-4">
                   Thank you, <strong className="text-white">{paymentSuccess.customer.name}</strong>. Your payment has been confirmed in real time.
                 </p>
+
+                <div className="p-3.5 rounded-2xl bg-cyan-DEFAULT/10 border border-cyan-DEFAULT/30 text-xs flex items-center justify-center gap-2.5 text-cyan-300 mb-5 shadow-[0_0_15px_rgba(0,229,255,0.1)]">
+                  <Mail className="w-4 h-4 text-cyan-DEFAULT flex-shrink-0" />
+                  <span>
+                    Official order receipt &amp; onboarding confirmation dispatched to <strong className="text-white underline decoration-cyan-DEFAULT/40">{paymentSuccess.customer.email}</strong>
+                  </span>
+                </div>
 
                 <div className="p-4 rounded-2xl bg-navy border border-navy-border text-left text-xs space-y-2 mb-6">
                   <div className="flex justify-between">

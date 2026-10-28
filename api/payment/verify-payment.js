@@ -1,6 +1,93 @@
 import 'dotenv/config';
 import crypto from 'crypto';
 
+/**
+ * Dispatches a cryptographically verified order receipt and confirmation
+ * directly to the buyer's email address via EmailJS REST API v1.0.
+ */
+async function sendEmailReceipt({
+  customerName,
+  customerEmail,
+  customerPhone,
+  packageName,
+  orderId,
+  paymentId,
+  amount,
+  currency,
+  paymentMethod,
+}) {
+  const serviceId = process.env.EMAILJS_SERVICE_ID;
+  const templateId = process.env.EMAILJS_TEMPLATE_ID;
+  const publicKey = process.env.EMAILJS_PUBLIC_KEY || 'aGQQEQqpZMy3SmeHg';
+  const privateKey = process.env.EMAILJS_PRIVATE_KEY || 'RjTW321UbfBEhRV2OfHmW';
+
+  if (!customerEmail) {
+    return { sent: false, reason: 'missing_customer_email' };
+  }
+
+  // Graceful detection if user hasn't yet pasted their Service ID or Template ID
+  if (!serviceId || !templateId || serviceId === 'service_default' || templateId === 'template_order_receipt') {
+    console.info(`[EmailJS] Transaction verified for ${customerEmail}. Automated email will dispatch once EMAILJS_SERVICE_ID and EMAILJS_TEMPLATE_ID are configured in .env.`);
+    return {
+      sent: false,
+      reason: 'unconfigured_template',
+      note: 'Awaiting EmailJS Service ID and Template ID in .env'
+    };
+  }
+
+  const formattedAmount = currency === 'USD'
+    ? `$${Number(amount).toLocaleString()} USD`
+    : `₹${Number(amount).toLocaleString('en-IN')} ${currency}`;
+
+  const templateParams = {
+    to_name: customerName || 'Valued Client',
+    to_email: customerEmail,
+    package_name: packageName || 'Spartan Impax Engineering Package',
+    order_id: orderId,
+    payment_id: paymentId,
+    amount: formattedAmount,
+    currency: currency || 'USD',
+    payment_method: paymentMethod || 'Razorpay Verified',
+    status: 'PAID',
+    customer_phone: customerPhone || 'N/A',
+    date: new Date().toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'medium' }),
+  };
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+    const emailRes = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'SpartanImpax-Serverless/1.0',
+      },
+      body: JSON.stringify({
+        service_id: serviceId,
+        template_id: templateId,
+        user_id: publicKey,
+        accessToken: privateKey,
+        template_params: templateParams,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (emailRes.ok) {
+      console.log(`[EmailJS] Order receipt sent successfully to ${customerEmail} (Order: ${orderId})`);
+      return { sent: true };
+    } else {
+      const errText = await emailRes.text();
+      console.warn(`[EmailJS] Gateway error HTTP ${emailRes.status}:`, errText);
+      return { sent: false, error: errText };
+    }
+  } catch (err) {
+    console.error('[EmailJS] Network/dispatch error:', err.message);
+    return { sent: false, error: err.message };
+  }
+}
+
 export default async function handler(req, res) {
   // CORS setup
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -50,6 +137,11 @@ export default async function handler(req, res) {
       });
     }
 
+    const customerName = (customer && customer.name) ? customer.name.trim() : 'Verified Customer';
+    const customerEmail = (customer && customer.email) ? customer.email.trim().toLowerCase() : 'billing@spartanimpax.com';
+    const customerPhone = (customer && customer.phone) ? customer.phone.trim() : null;
+    const packageName = body.planName || 'Spartan Impax Engineering Package';
+
     // Explicitly awaited database persistence for Serverless environments
     if (process.env.DATABASE_URL) {
       try {
@@ -71,17 +163,13 @@ export default async function handler(req, res) {
           // Resilient Fallback: If create-order didn't record orderId in DB beforehand,
           // create the PAID record directly so admin transaction audit is never missed
           if (updateResult.count === 0) {
-            const customerName = (customer && customer.name) ? customer.name.trim() : 'Verified Customer';
-            const customerEmail = (customer && customer.email) ? customer.email.trim().toLowerCase() : 'billing@spartanimpax.com';
-            const customerPhone = (customer && customer.phone) ? customer.phone.trim() : null;
-
             await prisma.paymentTransaction.create({
               data: {
                 orderId,
                 paymentId,
                 signature,
                 planSlug: planSlug || 'custom-plan',
-                planName: body.planName || 'Spartan Impax Engineering Package',
+                planName: packageName,
                 amount: Math.round(Number(amount) || 1),
                 currency: currency || 'USD',
                 customerName,
@@ -99,6 +187,22 @@ export default async function handler(req, res) {
       }
     }
 
+    // Trigger EmailJS Order Receipt directly to the buyer's email
+    let emailResult = { sent: false };
+    if (customer && customer.email) {
+      emailResult = await sendEmailReceipt({
+        customerName,
+        customerEmail: customer.email.trim().toLowerCase(),
+        customerPhone,
+        packageName,
+        orderId,
+        paymentId,
+        amount,
+        currency,
+        paymentMethod,
+      });
+    }
+
     return res.status(200).json({
       success: true,
       verified: true,
@@ -109,6 +213,8 @@ export default async function handler(req, res) {
       planSlug,
       currency,
       amount,
+      emailSent: emailResult.sent,
+      emailStatus: emailResult,
     });
   } catch (error) {
     console.error('Payment verification error:', error);
