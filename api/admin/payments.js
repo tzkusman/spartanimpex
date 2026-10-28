@@ -14,6 +14,47 @@ function verifyToken(req) {
   }
 }
 
+async function sendConfirmedReceiptEmail(tx, paymentId, paymentMethod) {
+  if (!tx || !tx.customerEmail) return;
+  try {
+    const formattedAmount = tx.currency === 'USD'
+      ? `$${Number(tx.amount).toLocaleString()} USD`
+      : `₹${Number(tx.amount).toLocaleString('en-IN')} ${tx.currency}`;
+
+    await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Origin': 'https://www.spartanimpex.com',
+        'User-Agent': 'SpartanImpax-Serverless/1.0',
+      },
+      body: JSON.stringify({
+        service_id: process.env.EMAILJS_SERVICE_ID || 'service_endm1tw',
+        template_id: process.env.EMAILJS_TEMPLATE_ID || 'template_l4qo9hg',
+        user_id: process.env.EMAILJS_PUBLIC_KEY || 'aGQQEQqpZMy3SmeHg',
+        accessToken: process.env.EMAILJS_PRIVATE_KEY || 'RjTW321UbfBEhRV2OfHmW',
+        template_params: {
+          to_name: tx.customerName || 'Valued Client',
+          name: tx.customerName || 'Valued Client',
+          to_email: tx.customerEmail,
+          email: tx.customerEmail,
+          package_name: tx.planName,
+          order_id: tx.orderId,
+          payment_id: paymentId,
+          amount: formattedAmount,
+          currency: tx.currency || 'USD',
+          payment_method: paymentMethod || 'Razorpay Verified',
+          status: 'PAID',
+          customer_phone: tx.customerPhone || 'N/A',
+          date: new Date().toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'medium' }),
+        },
+      }),
+    });
+  } catch (e) {
+    console.warn('[EmailJS] Reconcile confirmation email dispatch error:', e.message);
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
@@ -70,15 +111,26 @@ export default async function handler(req, res) {
         const successfulPayment = payments.find(p => p.status === 'captured' || p.status === 'authorized');
 
         if (successfulPayment && prisma) {
+          const existingTx = await prisma.paymentTransaction.findFirst({
+            where: { orderId },
+          });
+
+          const pMethod = successfulPayment.method ? `Razorpay ${successfulPayment.method.toUpperCase()}` : 'Razorpay Gateway';
+
           await prisma.paymentTransaction.updateMany({
             where: { orderId },
             data: {
               paymentId: successfulPayment.id,
               status: 'PAID',
-              paymentMethod: successfulPayment.method ? `Razorpay ${successfulPayment.method.toUpperCase()}` : 'Razorpay Gateway',
+              paymentMethod: pMethod,
               signature: 'RECONCILED_VIA_RAZORPAY_API',
             },
           });
+
+          // Dispatch confirmation email if order was pending and now confirmed
+          if (existingTx && existingTx.status === 'PENDING') {
+            await sendConfirmedReceiptEmail(existingTx, successfulPayment.id, pMethod);
+          }
 
           return res.status(200).json({
             success: true,
@@ -146,15 +198,19 @@ export default async function handler(req, res) {
               const successfulPayment = payments.find(p => p.status === 'captured' || p.status === 'authorized');
 
               if (successfulPayment) {
+                const pMethod = successfulPayment.method ? `Razorpay ${successfulPayment.method.toUpperCase()}` : 'Razorpay Gateway';
                 await prisma.paymentTransaction.updateMany({
                   where: { orderId: tx.orderId },
                   data: {
                     paymentId: successfulPayment.id,
                     status: 'PAID',
-                    paymentMethod: successfulPayment.method ? `Razorpay ${successfulPayment.method.toUpperCase()}` : 'Razorpay Gateway',
+                    paymentMethod: pMethod,
                     signature: 'RECONCILED_VIA_RAZORPAY_API',
                   },
                 });
+
+                await sendConfirmedReceiptEmail(tx, successfulPayment.id, pMethod);
+
                 updatedCount++;
                 results.push({ orderId: tx.orderId, status: 'PAID', paymentId: successfulPayment.id });
               }

@@ -73,6 +73,87 @@ async function getLiveUsdToInrRate() {
   return cachedFxRate.rate || 95.27;
 }
 
+/**
+ * Dispatches Stage 1 (Pending Order) notification to buyer's email via EmailJS REST API
+ */
+async function sendPendingOrderEmail({
+  customerName,
+  customerEmail,
+  customerPhone,
+  packageName,
+  orderId,
+  amount,
+  currency,
+  paymentMethod,
+}) {
+  const serviceId = process.env.EMAILJS_SERVICE_ID || 'service_endm1tw';
+  const templateId = process.env.EMAILJS_TEMPLATE_ID || 'template_l4qo9hg';
+  const publicKey = process.env.EMAILJS_PUBLIC_KEY || 'aGQQEQqpZMy3SmeHg';
+  const privateKey = process.env.EMAILJS_PRIVATE_KEY || 'RjTW321UbfBEhRV2OfHmW';
+
+  if (!customerEmail) return { sent: false, reason: 'missing_email' };
+
+  const formattedAmount = currency === 'USD'
+    ? `$${Number(amount).toLocaleString()} USD`
+    : `₹${Number(amount).toLocaleString('en-IN')} ${currency}`;
+
+  const templateParams = {
+    to_name: customerName || 'Valued Client',
+    name: customerName || 'Valued Client',
+    user_name: customerName || 'Valued Client',
+    to_email: customerEmail,
+    email: customerEmail,
+    user_email: customerEmail,
+    customer_email: customerEmail,
+    package_name: packageName || 'Spartan Impax Engineering Package',
+    plan_name: packageName || 'Spartan Impax Engineering Package',
+    order_id: orderId,
+    payment_id: 'Pending Payment',
+    amount: formattedAmount,
+    currency: currency || 'USD',
+    payment_method: paymentMethod || 'Razorpay Order Initiated',
+    status: 'PENDING',
+    customer_phone: customerPhone || 'N/A',
+    phone: customerPhone || 'N/A',
+    date: new Date().toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'medium' }),
+  };
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+    const emailRes = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Origin': 'https://www.spartanimpex.com',
+        'User-Agent': 'SpartanImpax-Serverless/1.0',
+      },
+      body: JSON.stringify({
+        service_id: serviceId,
+        template_id: templateId,
+        user_id: publicKey,
+        accessToken: privateKey,
+        template_params: templateParams,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (emailRes.ok) {
+      console.log(`[EmailJS] Stage 1 (PENDING) order email dispatched to ${customerEmail} (Order: ${orderId})`);
+      return { sent: true };
+    } else {
+      const errText = await emailRes.text();
+      console.warn(`[EmailJS] Stage 1 dispatch response HTTP ${emailRes.status}:`, errText);
+      return { sent: false, error: errText };
+    }
+  } catch (err) {
+    console.error('[EmailJS] Stage 1 dispatch error:', err.message);
+    return { sent: false, error: err.message };
+  }
+}
+
 export default async function handler(req, res) {
   // CORS setup
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -188,6 +269,7 @@ export default async function handler(req, res) {
     }
 
     // 4. Synchronously Awaited Database Transaction Log (Prevents serverless freeze dropping records)
+    const transactionAmount = Math.round(isUpiNetBanking ? (amountINR || unitPriceUSD) : unitPriceUSD);
     if (prisma) {
       try {
         await prisma.paymentTransaction.create({
@@ -195,7 +277,7 @@ export default async function handler(req, res) {
             orderId: rzpOrder.id,
             planSlug: planData.slug,
             planName: planData.name,
-            amount: Math.round(isUpiNetBanking ? (amountINR || unitPriceUSD) : unitPriceUSD),
+            amount: transactionAmount,
             currency,
             customerName: customerName.trim(),
             customerEmail: customerEmail.trim().toLowerCase(),
@@ -209,6 +291,21 @@ export default async function handler(req, res) {
       }
     }
 
+    // 5. Stage 1 Email Notification: Dispatch PENDING Order Details to Buyer's Email
+    let pendingEmailResult = { sent: false };
+    if (customerEmail) {
+      pendingEmailResult = await sendPendingOrderEmail({
+        customerName: customerName.trim(),
+        customerEmail: customerEmail.trim().toLowerCase(),
+        customerPhone: customerPhone ? customerPhone.trim() : null,
+        packageName: planData.name,
+        orderId: rzpOrder.id,
+        amount: transactionAmount,
+        currency,
+        paymentMethod: isUpiNetBanking ? 'UPI / NetBanking (INR)' : 'Credit / Debit Card (USD)',
+      });
+    }
+
     return res.status(200).json({
       success: true,
       orderId: rzpOrder.id,
@@ -219,6 +316,7 @@ export default async function handler(req, res) {
       liveRate: isUpiNetBanking ? liveRate : 1,
       method: isUpiNetBanking ? 'UPI' : 'CARD_USD',
       keyId: key_id,
+      pendingEmailSent: pendingEmailResult.sent,
       plan: {
         name: planData.name,
         priceUSD: unitPriceUSD,
