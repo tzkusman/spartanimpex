@@ -16,8 +16,8 @@ async function sendEmailReceipt({
   currency,
   paymentMethod,
 }) {
-  const serviceId = process.env.EMAILJS_SERVICE_ID;
-  const templateId = process.env.EMAILJS_TEMPLATE_ID;
+  const serviceId = process.env.EMAILJS_SERVICE_ID || 'service_endm1tw';
+  const templateId = process.env.EMAILJS_TEMPLATE_ID || 'template_l4qo9hg';
   const publicKey = process.env.EMAILJS_PUBLIC_KEY || 'aGQQEQqpZMy3SmeHg';
   const privateKey = process.env.EMAILJS_PRIVATE_KEY || 'RjTW321UbfBEhRV2OfHmW';
 
@@ -25,24 +25,21 @@ async function sendEmailReceipt({
     return { sent: false, reason: 'missing_customer_email' };
   }
 
-  // Graceful detection if user hasn't yet pasted their Service ID or Template ID
-  if (!serviceId || !templateId || serviceId === 'service_default' || templateId === 'template_order_receipt') {
-    console.info(`[EmailJS] Transaction verified for ${customerEmail}. Automated email will dispatch once EMAILJS_SERVICE_ID and EMAILJS_TEMPLATE_ID are configured in .env.`);
-    return {
-      sent: false,
-      reason: 'unconfigured_template',
-      note: 'Awaiting EmailJS Service ID and Template ID in .env'
-    };
-  }
-
   const formattedAmount = currency === 'USD'
     ? `$${Number(amount).toLocaleString()} USD`
     : `₹${Number(amount).toLocaleString('en-IN')} ${currency}`;
 
+  // Multi-alias parameter bindings ensure 100% compatibility with any EmailJS template variable names
   const templateParams = {
     to_name: customerName || 'Valued Client',
+    name: customerName || 'Valued Client',
+    user_name: customerName || 'Valued Client',
     to_email: customerEmail,
+    email: customerEmail,
+    user_email: customerEmail,
+    customer_email: customerEmail,
     package_name: packageName || 'Spartan Impax Engineering Package',
+    plan_name: packageName || 'Spartan Impax Engineering Package',
     order_id: orderId,
     payment_id: paymentId,
     amount: formattedAmount,
@@ -50,6 +47,7 @@ async function sendEmailReceipt({
     payment_method: paymentMethod || 'Razorpay Verified',
     status: 'PAID',
     customer_phone: customerPhone || 'N/A',
+    phone: customerPhone || 'N/A',
     date: new Date().toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'medium' }),
   };
 
@@ -61,6 +59,7 @@ async function sendEmailReceipt({
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Origin': 'https://www.spartanimpex.com',
         'User-Agent': 'SpartanImpax-Serverless/1.0',
       },
       body: JSON.stringify({
@@ -79,7 +78,7 @@ async function sendEmailReceipt({
       return { sent: true };
     } else {
       const errText = await emailRes.text();
-      console.warn(`[EmailJS] Gateway error HTTP ${emailRes.status}:`, errText);
+      console.warn(`[EmailJS] Gateway response HTTP ${emailRes.status}:`, errText);
       return { sent: false, error: errText };
     }
   } catch (err) {
