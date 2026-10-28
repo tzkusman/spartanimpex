@@ -1,4 +1,4 @@
-# Spartan Impax — Luxury Light All-in-One IT Portfolio
+# Spartan Impex — Luxury Light All-in-One IT Portfolio
 
 A bespoke, production-ready, multi-page IT portfolio website engineered with **React 19**, **Vite**, **Tailwind CSS**, and **React Router 7**. Designed with a sophisticated **Luxury Light** aesthetic inspired by high-end editorial publications and tailored for IT architects, software engineers, and technical consultants.
 
