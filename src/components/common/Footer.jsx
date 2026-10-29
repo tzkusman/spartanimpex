@@ -14,7 +14,7 @@ export default function Footer() {
       <Container>
         <div className="grid grid-cols-1 md:grid-cols-12 gap-10 pb-12 border-b border-navy-border">
 
-          {/* ── Brand Col ─────────────────────────────────────── */}
+          {/* ─── Brand Col ────────────────────────────────────────────────────────── */}
           <div className="md:col-span-5 flex flex-col items-start">
             <Link to="/" className="flex items-center gap-3 mb-4 group">
               <div className="relative w-9 h-9 rounded-xl bg-navy-card border border-navy-border shadow-sm overflow-hidden flex items-center justify-center p-0.5 group-hover:scale-110 transition-transform duration-300">
@@ -40,9 +40,12 @@ export default function Footer() {
             <div className="flex items-center gap-2 text-xs font-semibold tracking-wider uppercase text-cyan-400 bg-navy-card px-3.5 py-1.5 rounded-full border border-cyan-500/30">
               <span>{personalData.tagline}</span>
             </div>
+            <p className="text-[11px] text-navy-400 mt-3 font-mono">
+              Corporate Entity: Spartan Impex Micro Finance Private Limited
+            </p>
           </div>
 
-          {/* ── Quick Links ────────────────────────────────────── */}
+          {/* ─── Quick Links ──────────────────────────────────────────────────────── */}
           <div className="md:col-span-4 grid grid-cols-2 gap-4">
             <div>
               <h4 className="text-xs font-semibold uppercase tracking-wider text-navy-100 mb-4">
@@ -73,7 +76,7 @@ export default function Footer() {
             </div>
           </div>
 
-          {/* ── Connect ────────────────────────────────────────── */}
+          {/* ─── Connect ──────────────────────────────────────────────────────────── */}
           <div className="md:col-span-3 flex flex-col items-start md:items-end justify-between">
             <div className="w-full md:text-right">
               <h4 className="text-xs font-semibold uppercase tracking-wider text-navy-100 mb-4">
@@ -98,9 +101,16 @@ export default function Footer() {
           </div>
         </div>
 
-        {/* ── Copyright ─────────────────────────────────────────── */}
+        {/* ─── Copyright ────────────────────────────────────────────────────────── */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-navy-300 gap-4">
-          <p>© {new Date().getFullYear()} {personalData.name}. All rights reserved.</p>
+          <div className="text-center sm:text-left">
+            <p className="font-medium text-navy-100">
+              {"\u00A9"} {new Date().getFullYear()} Spartan Impex Micro Finance Private Limited. All rights reserved.
+            </p>
+            <p className="text-[11px] text-navy-400 mt-0.5">
+              Enterprise IT Architecture & Digital Engineering Division
+            </p>
+          </div>
           <p className="flex items-center gap-1.5">
             <span>Crafted with Precision</span>
             <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 inline-block" />
@@ -111,3 +121,4 @@ export default function Footer() {
     </footer>
   );
 }
+

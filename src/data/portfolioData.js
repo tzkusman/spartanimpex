@@ -6,6 +6,7 @@
 
 export const personalData = {
   name: "Spartan Impax",
+  legalCompanyName: "Spartan Impex Micro Finance Private Limited",
   preferredName: "Spartan Impax",
   title: "Enterprise IT Solutions | Full-Stack Engineering | AI & Cloud Architecture",
   shortBio: "We architect mission-critical digital systems, Generative AI platforms, enterprise ERP portals, and high-conversion commercial applications for global industry leaders.",

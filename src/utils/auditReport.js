@@ -35,7 +35,7 @@ export function printAuditReport(txData) {
     <html lang="en">
     <head>
       <meta charset="UTF-8">
-      <title>Spartan Impax - Audit Certificate & Invoice ${invoiceNo}</title>
+      <title>Spartan Impex Micro Finance Private Limited - Audit Certificate & Invoice ${invoiceNo}</title>
       <style>
         @page {
           size: A4;
@@ -215,8 +215,9 @@ export function printAuditReport(txData) {
           <div class="brand-sub">Enterprise IT Architecture & Engineering</div>
         </div>
         <div class="company-meta">
-          <strong>Spartan Impex IT Services</strong><br>
-          Jodhpur, Rajasthan, India — 342001<br>
+          <strong>Spartan Impex Micro Finance Private Limited</strong><br>
+          <span style="font-size: 10px; color: #64748b; font-weight: 600;">Enterprise IT Architecture & Digital Engineering Division</span><br>
+          Jodhpur, Rajasthan, India – 342001<br>
           Phone: +91 89055 86541 &bull; Email: spartanimpex19@gmail.com<br>
           Website: https://www.spartanimpex.com
         </div>
@@ -225,7 +226,7 @@ export function printAuditReport(txData) {
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
         <div>
           <h2 style="margin: 0; font-size: 18px; font-weight: 800; color: #071525;">STATUTORY PAYMENT RECEIPT & AUDIT CERTIFICATE</h2>
-          <span style="font-size: 11px; color: #64748b;">Cryptographically Verified Production Transaction Record</span>
+          <span style="font-size: 11px; color: #64748b;">Cryptographically Verified Production Transaction Record &bull; Spartan Impex Micro Finance Private Limited</span>
         </div>
         <div>
           <span class="badge ${status === 'PAID' ? '' : 'audit-badge'}">${status}</span>
@@ -315,7 +316,7 @@ export function printAuditReport(txData) {
       <div class="signatures">
         <div>
           <div class="sign-title">Gajender Singh Rajawat</div>
-          <div class="sign-role">Chief Executive Officer & Founder, Spartan Impax</div>
+          <div class="sign-role">Chief Executive Officer & Founder, Spartan Impex Micro Finance Private Limited</div>
         </div>
         <div style="text-align: right;">
           <div class="sign-title">Usman</div>
@@ -324,7 +325,7 @@ export function printAuditReport(txData) {
       </div>
 
       <div class="footer">
-        Spartan Impax Enterprise IT Solutions &bull; Official Digital Financial Audit Certificate &bull; Certified for corporate tax deduction, CPA audit, and commercial accounting.<br>
+        Spartan Impex Micro Finance Private Limited &bull; Official Digital Financial Audit Certificate &bull; Certified for corporate tax deduction, CPA audit, and commercial accounting.<br>
         Transaction validated through Razorpay Production Gateway &bull; Recorded in PostgreSQL Ledger.
       </div>
 

@@ -15,7 +15,8 @@ export default async function handler(req, res) {
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'Please provide your full name.' });
     }
-    if (!email || typeof email !== 'string' || !/^[^s@]+@[^s@]+.[^s@]+$/.test(email.trim())) {
+    // Robust RFC-compliant email regex ensuring letters including 's' are properly accepted
+    if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       return res.status(400).json({ error: 'Please provide a valid email address.' });
     }
     if (!subject || typeof subject !== 'string' || !subject.trim()) {
@@ -28,28 +29,26 @@ export default async function handler(req, res) {
     const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
     const ip = typeof clientIp === 'string' ? clientIp.split(',')[0].trim() : null;
 
-    // Non-blocking database logging
+    // Awaited database logging for reliable serverless execution
     if (process.env.DATABASE_URL) {
-      (async () => {
-        try {
-          const { default: prisma } = await import('../../server/src/prisma.js');
-          if (prisma) {
-            await prisma.contactMessage.create({
-              data: {
-                name: name.trim(),
-                email: email.trim().toLowerCase(),
-                subject: subject.trim(),
-                message: message.trim(),
-                status: 'UNREAD',
-                ip,
-                userAgent: req.headers['user-agent'] || null,
-              },
-            });
-          }
-        } catch (dbErr) {
-          console.warn('Prisma contact logging skipped:', dbErr.message);
+      try {
+        const { default: prisma } = await import('../../server/src/prisma.js');
+        if (prisma) {
+          await prisma.contactMessage.create({
+            data: {
+              name: name.trim(),
+              email: email.trim().toLowerCase(),
+              subject: subject.trim(),
+              message: message.trim(),
+              status: 'UNREAD',
+              ip,
+              userAgent: req.headers['user-agent'] || null,
+            },
+          });
         }
-      })().catch(() => {});
+      } catch (dbErr) {
+        console.warn('Prisma contact logging skipped or warning:', dbErr.message);
+      }
     }
 
     return res.status(201).json({

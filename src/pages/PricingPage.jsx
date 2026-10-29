@@ -101,31 +101,18 @@ const COUNTRIES_BY_DIAL_DESC = [...COUNTRIES].sort((a, b) => b.dial.length - a.d
 function matchCountryFromPhone(rawPhone) {
   if (!rawPhone) return null;
   const clean = rawPhone.trim();
-  const digits = clean.replace(/[^0-9]/g, '');
 
-  if (clean.startsWith('+')) {
+  // ONLY auto-detect country if input starts with international '+' or '00'
+  if (clean.startsWith('+') || clean.startsWith('00')) {
+    const formatted = clean.startsWith('00') ? '+' + clean.slice(2) : clean;
     for (const c of COUNTRIES_BY_DIAL_DESC) {
-      if (clean.startsWith(c.dial)) {
-        return c;
+      if (formatted.startsWith(c.dial)) {
+        return {
+          country: c,
+          localNumber: formatted.slice(c.dial.length).trim(),
+        };
       }
     }
-  }
-
-  for (const c of COUNTRIES_BY_DIAL_DESC) {
-    const dialDigits = c.dial.replace('+', '');
-    if (digits.startsWith(dialDigits) && digits.length >= dialDigits.length + 7) {
-      return c;
-    }
-  }
-
-  // 10-digit Indian mobile starting with 6-9
-  if (digits.length === 10 && /^[6-9]/.test(digits)) {
-    return COUNTRIES.find((c) => c.code === 'IN') || null;
-  }
-
-  // 10-digit US mobile or 11-digit starting with 1
-  if ((digits.length === 10 && /^[2-9]/.test(digits)) || (digits.length === 11 && digits.startsWith('1'))) {
-    return COUNTRIES.find((c) => c.code === 'US') || null;
   }
 
   return null;
@@ -141,28 +128,19 @@ function normalizePhoneForGateway(phone, selectedCountry) {
     return '+' + digits;
   }
 
-  const dialCode = selectedCountry?.dial || '+1';
+  const dialCode = selectedCountry?.dial || '+91';
   const dialDigits = dialCode.replace(/[^0-9]/g, '');
 
-  if (dialDigits === '91') {
-    if (digits.length === 12 && digits.startsWith('91')) {
-      return '+' + digits;
-    }
-    return '+91' + digits;
+  let cleanDigits = digits;
+  if (cleanDigits.startsWith('0') && cleanDigits.length > 9) {
+    cleanDigits = cleanDigits.slice(1);
   }
 
-  if (dialDigits === '1') {
-    if (digits.length === 11 && digits.startsWith('1')) {
-      return '+' + digits;
-    }
-    return '+1' + digits;
+  if (cleanDigits.startsWith(dialDigits) && cleanDigits.length === dialDigits.length + 10) {
+    return '+' + cleanDigits;
   }
 
-  if (digits.startsWith(dialDigits) && digits.length >= dialDigits.length + 8) {
-    return '+' + digits;
-  }
-
-  return dialCode + digits;
+  return dialCode + cleanDigits;
 }
 
 function getInitialPaymentMethod() {
@@ -325,17 +303,41 @@ export default function PricingPage() {
   };
 
   const handlePhoneChange = (val) => {
-    setFormData((prev) => ({ ...prev, phone: val }));
+    let cleanVal = val;
+    const trimmed = val.trim();
 
-    const detected = matchCountryFromPhone(val);
-    if (detected) {
-      setSelectedCountry(detected);
-      if (detected.code === 'IN') {
-        setPaymentTab('UPI');
-      } else {
-        setPaymentTab('CARD_USD');
+    // 1. If user typed or pasted an international number starting with '+' or '00'
+    if (trimmed.startsWith('+') || trimmed.startsWith('00')) {
+      const match = matchCountryFromPhone(trimmed);
+      if (match) {
+        setSelectedCountry(match.country);
+        if (match.country.code === 'IN') {
+          setPaymentTab('UPI');
+        } else {
+          setPaymentTab('CARD_USD');
+        }
+        // Extract local portion so dial code isn't duplicated with the flag badge
+        cleanVal = match.localNumber;
+      }
+    } else {
+      // 2. Direct digits pasted/typed WITHOUT leading '+'
+      // Keep selectedCountry as-is! Do NOT hijack country code to China (+86) or anywhere else!
+      const digits = val.replace(/[^0-9]/g, '');
+      const dialDigits = selectedCountry?.dial?.replace(/[^0-9]/g, '') || '';
+
+      // If user pasted 12-digit Indian number with '91' prefix (e.g. 918619186541) when India is selected
+      if (dialDigits === '91' && digits.length === 12 && digits.startsWith('91')) {
+        cleanVal = digits.slice(2);
+      } else if (dialDigits === '91' && digits.length === 11 && digits.startsWith('0')) {
+        // Strip leading trunk 0 (e.g. 08619186541 -> 8619186541)
+        cleanVal = digits.slice(1);
+      } else if (dialDigits === '44' && digits.length === 11 && digits.startsWith('0')) {
+        // Strip UK leading trunk 0
+        cleanVal = digits.slice(1);
       }
     }
+
+    setFormData((prev) => ({ ...prev, phone: cleanVal }));
   };
 
   const handleInitiatePayment = async (e) => {
