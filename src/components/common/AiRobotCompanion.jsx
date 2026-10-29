@@ -146,8 +146,8 @@ export default function AiRobotCompanion() {
 
       const target = e.target;
       let title = "Website Element";
-      let enText = "You clicked here! Let me explain this part of Spartan Impax:";
-      let hiText = "आपने यहाँ क्लिक किया! Spartan Impax के इस हिस्से की जानकारी:";
+      let enText = "You clicked here! Let me explain this part of Spartan Impex:";
+      let hiText = "आपने यहाँ क्लिक किया! Spartan Impex के इस हिस्से की जानकारी:";
 
       // Contextual Intelligence on clicked element
       if (target.closest('header, nav, .site-navbar')) {
@@ -160,11 +160,11 @@ export default function AiRobotCompanion() {
         hiText = "यह स्पार्टन इम्पैक्स का 3D एक्सप्लोडेड लोगो है! इसमें स्तरित सर्किट बोर्ड (PCB) और एल्युमिनियम कोर साफ दिखाई देता है।";
       } else if (target.closest('h1, .hero-section')) {
         title = "✨ Hero Introduction";
-        enText = "Welcome to the Hero section! Spartan Impax showcases full-stack web engineering, resilient cloud systems, and editorial UI/UX design.";
+        enText = "Welcome to the Hero section! Spartan Impex showcases full-stack web engineering, resilient cloud systems, and editorial UI/UX design.";
         hiText = "हीरो सेक्शन में आपका स्वागत है! स्पार्टन इम्पैक्स फुल-स्टैक वेब, क्लाउड सिस्टम और प्रीमियम UI/UX डिजाइन पेश करता है।";
       } else if (target.closest('[href*="resume"], button:has-text("CV"), [data-action="cv"]')) {
         title = "📄 Curriculum Vitae";
-        enText = "This button downloads Spartan Impax's official verified PDF resume detailing technical qualifications and credentials.";
+        enText = "This button downloads Spartan Impex's official verified PDF resume detailing technical qualifications and credentials.";
         hiText = "यह बटन स्पार्टन इम्पैक्स का आधिकारिक वेरिफाइड रेज़्यूमे (CV) डाउनलोड करता है जिसमें सभी तकनीकी योग्यताएं दर्ज हैं।";
       } else if (target.closest('article, .project-card, [to^="/projects"]')) {
         title = "🚀 Project Showcase";
@@ -176,7 +176,7 @@ export default function AiRobotCompanion() {
         hiText = "यह हमारी आईटी सेवाओं को दर्शाता है—फुल-स्टैक वेब डेवलपमेंट से लेकर ऑटोमेटेड डॉकर/कुबेरनेट्स क्लाउड डेवऑप्स तक।";
       } else if (target.closest('form, input, textarea')) {
         title = "📩 Contact Inquiry Form";
-        enText = "Direct client inquiry form with instant validation! Enter your project details to send a message directly to Spartan Impax.";
+        enText = "Direct client inquiry form with instant validation! Enter your project details to send a message directly to Spartan Impex.";
         hiText = "डायरेक्ट इंक्वायरी फॉर्म! अपने प्रोजेक्ट की जानकारी भरें और सीधे स्पार्टन इम्पैक्स से संपर्क करें।";
       } else if (target.closest('.skills-card, [role="tab"], button:has-text("Frontend"), button:has-text("Backend")')) {
         title = "🛠️ Tech Stack Matrix";
@@ -184,13 +184,13 @@ export default function AiRobotCompanion() {
         hiText = "यह टेक्नोलॉजी स्टैक है। आप फ्रंटेंड, बैकएंड, क्लाउड और डेटाबेस के अनुसार फिल्टर करके देख सकते हैं!";
       } else if (target.closest('footer')) {
         title = "🏛️ Website Footer";
-        enText = "The footer contains copyright verification, quick navigational shortcuts, and social links to connect with Spartan Impax.";
+        enText = "The footer contains copyright verification, quick navigational shortcuts, and social links to connect with Spartan Impex.";
         hiText = "यह वेबसाइट का फुटर है। यहाँ कॉपीराइट, त्वरित लिंक्स और सोशल मीडिया कनेक्ट्स उपलब्ध हैं।";
       } else {
         const text = target.innerText?.trim();
         if (text && text.length > 2 && text.length < 80) {
           title = `💡 ${text.slice(0, 24)}...`;
-          enText = `You clicked "${text}". This is an interactive component of the Spartan Impax portfolio designed with luxury light aesthetics.`;
+          enText = `You clicked "${text}". This is an interactive component of the Spartan Impex portfolio designed with luxury light aesthetics.`;
           hiText = `आपने "${text}" चुना है। यह स्पार्टन इम्पैक्स पोर्टफोलियो का एक इंटरैक्टिव हिस्सा है।`;
         } else {
           title = "📍 Clicked Location";
@@ -347,10 +347,10 @@ export default function AiRobotCompanion() {
     setDialogOpen(true);
 
     if (nextExpr === 'excited') {
-      setSpeechEn("✨ I'm super excited! Let's explore Spartan Impax's latest IT solutions!");
+      setSpeechEn("✨ I'm super excited! Let's explore Spartan Impex's latest IT solutions!");
       setSpeechHi("✨ मैं बहुत उत्साहित हूँ! चलिए स्पार्टन इम्पैक्स के नए प्रोजेक्ट्स देखें!");
     } else if (nextExpr === 'love') {
-      setSpeechEn("💖 Thanks for visiting Spartan Impax! We craft software with passion!");
+      setSpeechEn("💖 Thanks for visiting Spartan Impex! We craft software with passion!");
       setSpeechHi("💖 यहाँ आने के लिए धन्यवाद! हम दिल से बेहतरीन सॉफ्टवेयर बनाते हैं!");
     } else if (nextExpr === 'curious') {
       setSpeechEn("🤔 Wondering about custom web design or cloud architecture? Ask away!");

@@ -65,7 +65,7 @@ export default function AdminLoginPage() {
             <div className="w-16 h-16 rounded-2xl bg-navy border border-navy-border p-2 mb-4 shadow-lg flex items-center justify-center">
               <img
                 src={logoImg}
-                alt="Spartan Impax"
+                alt="Spartan Impex"
                 className="w-full h-full object-contain drop-shadow-[0_0_8px_rgba(0,229,255,0.6)]"
               />
             </div>
@@ -76,7 +76,7 @@ export default function AdminLoginPage() {
             </div>
 
             <h1 className="text-2xl font-serif font-bold text-white tracking-tight">
-              Spartan Impax Control
+              Spartan Impex Control
             </h1>
             <p className="text-xs text-navy-300 mt-1">
               Restricted management portal for executive leadership

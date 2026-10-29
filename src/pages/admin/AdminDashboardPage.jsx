@@ -289,7 +289,7 @@ export default function AdminDashboardPage() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `spartan_impax_transactions_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `spartan_impex_transactions_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -387,11 +387,11 @@ export default function AdminDashboardPage() {
           <div className="flex items-center gap-3">
             <Link to="/admin" className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-navy-card border border-cyan-DEFAULT/30 p-1.5 flex items-center justify-center shadow-[0_0_15px_rgba(0,229,255,0.2)]">
-                <img src={logoImg} alt="Spartan Impax" className="w-full h-full object-contain" />
+                <img src={logoImg} alt="Spartan Impex" className="w-full h-full object-contain" />
               </div>
               <div>
                 <span className="font-serif font-bold text-base tracking-tight text-white flex items-center gap-1.5">
-                  Spartan Impax
+                  Spartan Impex
                   <span className="text-[10px] font-sans font-bold px-2 py-0.5 rounded-full bg-cyan-DEFAULT/15 text-cyan-DEFAULT border border-cyan-DEFAULT/30 uppercase tracking-wider">
                     Executive Control
                   </span>

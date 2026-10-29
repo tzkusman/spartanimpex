@@ -1,5 +1,5 @@
 /**
- * Spartan Impax - Multi-Currency & Geolocation Utility
+ * Spartan Impex - Multi-Currency & Geolocation Utility
  * Handles international currencies, exchange rates, subunit calculations,
  * and automatic country detection for Razorpay global payments.
  */

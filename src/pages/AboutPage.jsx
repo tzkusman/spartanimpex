@@ -152,7 +152,7 @@ export default function AboutPage() {
               EXECUTIVE LEADERSHIP & ARCHITECTURE
             </span>
             <h2 className="text-3xl sm:text-4xl font-serif font-medium text-white mt-1">
-              Meet Spartan Impax Leadership
+              Meet Spartan Impex Leadership
             </h2>
             <p className="text-sm sm:text-base text-navy-200 mt-2">
               Guided by seasoned technology leadership delivering mission-critical digital systems and Generative AI platforms.

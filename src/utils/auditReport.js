@@ -1,5 +1,5 @@
 /**
- * Spartan Impax - Enterprise Financial Audit & Tax Invoice Generator
+ * Spartan Impex - Enterprise Financial Audit & Tax Invoice Generator
  * Generates official, print-ready, high-fidelity audit receipts & tax invoices
  * for clients and statutory corporate audits.
  */

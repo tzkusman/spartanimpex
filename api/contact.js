@@ -32,7 +32,7 @@ export default async function handler(req, res) {
     // Awaited database logging for reliable serverless execution
     if (process.env.DATABASE_URL) {
       try {
-        const { default: prisma } = await import('../../server/src/prisma.js');
+        const { default: prisma } = await import('../server/src/prisma.js');
         if (prisma) {
           await prisma.contactMessage.create({
             data: {

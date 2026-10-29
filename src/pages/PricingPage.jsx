@@ -399,7 +399,7 @@ export default function PricingPage() {
         key: orderData.keyId,
         amount: orderData.amount,
         currency: orderData.currency,
-        name: 'Spartan Impax Enterprise IT',
+        name: 'Spartan Impex Enterprise IT',
         description: orderDescription,
         image: '/assets/spartan-logo.png',
         order_id: orderData.orderId,

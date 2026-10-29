@@ -1,13 +1,13 @@
 /**
- * Spartan Impax - Luxury Light IT Portfolio Configuration & Data Store
+ * Spartan Impex - Luxury Light IT Portfolio Configuration & Data Store
  * All personal details, skills, projects, services, and articles are centralized here.
  * Easily replace placeholders with real details.
  */
 
 export const personalData = {
-  name: "Spartan Impax",
+  name: "Spartan Impex",
   legalCompanyName: "Spartan Impex Micro Finance Private Limited",
-  preferredName: "Spartan Impax",
+  preferredName: "Spartan Impex",
   title: "Enterprise IT Solutions | Full-Stack Engineering | AI & Cloud Architecture",
   shortBio: "We architect mission-critical digital systems, Generative AI platforms, enterprise ERP portals, and high-conversion commercial applications for global industry leaders.",
   editorialHeadline: "Engineering Elegant & High-Impact Digital Experiences",
@@ -28,7 +28,7 @@ export const personalData = {
       role: "Chief Executive Officer (CEO) & Founder",
       email: "gajender@spartanimpex.com",
       linkedin: "https://www.linkedin.com/in/gajender-singh-rajawat-859547430/",
-      bio: "Visionary technology executive leading Spartan Impax. Guiding strategic enterprise partnerships, corporate growth, and international delivery of high-yield digital solutions."
+      bio: "Visionary technology executive leading Spartan Impex. Guiding strategic enterprise partnerships, corporate growth, and international delivery of high-yield digital solutions."
     },
     {
       name: "Usman",
@@ -47,7 +47,7 @@ export const personalData = {
     email: "mailto:gajender@spartanimpex.com",
   },
   aboutBio: [
-    "Spartan Impax is an elite digital engineering firm led by CEO Gajender Singh Rajawat and CIO Usman. We specialize in transforming complex business challenges into resilient, high-speed software architectures.",
+    "Spartan Impex is an elite digital engineering firm led by CEO Gajender Singh Rajawat and CIO Usman. We specialize in transforming complex business challenges into resilient, high-speed software architectures.",
     "Our engineering portfolio spans cutting-edge Generative AI Studios (Eye Production & DenimCrafts), enterprise-scale Oracle APEX manufacturing portals, headless e-commerce storefronts (Bleach Resistant), and intelligent SaaS platforms (AI Resume Builder).",
     "Whether designing high-throughput PostgreSQL databases via Prisma ORM, implementing Razorpay payment gateways, or deploying Kubernetes cloud microservices, we combine aesthetic luxury with industrial durability."
   ],
@@ -62,7 +62,7 @@ export const personalData = {
     {
       period: "2022 ? Present",
       role: "Executive Technology & Engineering Leadership",
-      institution: "Spartan Impax & Enterprise Partners",
+      institution: "Spartan Impex & Enterprise Partners",
       description: "Delivering production platforms for international brands including DenimCrafts, Bleach Resistant, and Denivo, handling mission-critical factory and consumer workloads.",
       type: "experience"
     },
