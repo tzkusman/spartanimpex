@@ -197,10 +197,7 @@ export default function ProjectsPage() {
             </div>
           )}
 
-          {/* Developer Notice */}
-          <div className="mt-16 p-4 rounded-2xl bg-navy-card border border-navy-border text-center text-xs text-navy-200">
-            <span className="font-semibold text-cyan">Enterprise IT Notice:</span> Projects can be tailored in <code className="bg-navy px-1.5 py-0.5 rounded border border-navy-border text-cyan-300">src/data/portfolioData.js</code> with live production endpoints and architecture blueprints.
-          </div>
+
         </Container>
       </section>
 
