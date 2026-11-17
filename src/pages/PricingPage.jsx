@@ -23,26 +23,9 @@ import {
 import Container from '../components/common/Container';
 import { pricingPlansData } from '../data/portfolioData';
 import { printAuditReport } from '../utils/auditReport';
+import { prefetchPricing, getCachedPlans, subscribePricing } from '../utils/pricingStore';
 
-const PRICING_CACHE_KEY = 'spartan_live_pricing_plans_usd';
-
-// Synchronous initial state resolution: guarantees 0ms paint with latest admin prices
-function getInitialPlans() {
-  if (typeof window !== 'undefined') {
-    try {
-      const cached = localStorage.getItem(PRICING_CACHE_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-    } catch (err) {
-      console.warn('Failed reading cached pricing plans:', err);
-    }
-  }
-  return pricingPlansData;
-}
+// Synchronous resolution uses in-memory pricing store (0ms, no stale cache)
 
 export const COUNTRIES = [
   { code: 'US', dial: '+1', flag: '🇺🇸', name: 'United States' },
@@ -156,8 +139,9 @@ function getInitialPaymentMethod() {
 }
 
 export default function PricingPage() {
-  const [plans, setPlans] = useState(getInitialPlans);
-  const [loading, setLoading] = useState(false);
+  const cachedPlans = getCachedPlans();
+  const [plans, setPlans] = useState(() => cachedPlans || pricingPlansData);
+  const [loading, setLoading] = useState(() => !cachedPlans);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [paymentTab, setPaymentTab] = useState(getInitialPaymentMethod); // 'CARD_USD' for International, 'UPI' for India
@@ -214,33 +198,26 @@ export default function PricingPage() {
     };
   }, []);
 
-  // Silent background revalidation: checks PostgreSQL for any admin updates
+  // Live pricing subscription & verification: always shows fresh database values
   useEffect(() => {
     let isMounted = true;
-    const fetchPlans = async () => {
-      try {
-        const res = await fetch(`/api/pricing?_t=${Date.now()}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data) && data.length > 0 && isMounted) {
-            setPlans(data);
-            try {
-              localStorage.setItem(PRICING_CACHE_KEY, JSON.stringify(data));
-            } catch (storageErr) {
-              console.warn('Could not cache pricing plans:', storageErr);
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('Using existing cached pricing plans:', err);
-      } finally {
-        if (isMounted) setLoading(false);
+    const unsubscribe = subscribePricing((updatedPlans) => {
+      if (isMounted && Array.isArray(updatedPlans) && updatedPlans.length > 0) {
+        setPlans(updatedPlans);
+        setLoading(false);
       }
-    };
-    fetchPlans();
+    });
+
+    prefetchPricing().then((data) => {
+      if (isMounted && Array.isArray(data) && data.length > 0) {
+        setPlans(data);
+        setLoading(false);
+      }
+    });
 
     return () => {
       isMounted = false;
+      unsubscribe();
     };
   }, []);
 
@@ -579,22 +556,34 @@ export default function PricingPage() {
                   </p>
 
                   {/* Pricing Display */}
-                  <div className="mb-6 p-4 rounded-2xl bg-navy border border-navy-border">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-4xl lg:text-5xl font-black text-white tracking-tight">
-                        ${price.toLocaleString()}
-                      </span>
-                      <span className="text-silver-400 text-xs font-semibold uppercase">USD</span>
-                    </div>
-                    {originalPrice && (
-                      <div className="mt-1 flex items-center gap-2">
-                        <span className="text-sm text-silver-400 line-through">
-                          ${originalPrice.toLocaleString()} USD
-                        </span>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold">
-                          Save ${originalPrice - price}
-                        </span>
+                  <div className="mb-6 p-4 rounded-2xl bg-navy border border-navy-border min-h-[92px] flex flex-col justify-center">
+                    {loading ? (
+                      <div className="space-y-2 py-1">
+                        <div className="h-9 w-32 bg-cyan-DEFAULT/15 border border-cyan-DEFAULT/30 rounded-xl animate-pulse flex items-center px-3 gap-2">
+                          <Loader2 className="w-3.5 h-3.5 text-cyan-DEFAULT animate-spin" />
+                          <span className="text-[11px] font-mono font-semibold text-cyan-300">Live Rate...</span>
+                        </div>
+                        <p className="text-[10px] text-silver-400 font-mono">Syncing live gateway price...</p>
                       </div>
+                    ) : (
+                      <>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-4xl lg:text-5xl font-black text-white tracking-tight">
+                            ${price.toLocaleString()}
+                          </span>
+                          <span className="text-silver-400 text-xs font-semibold uppercase">USD</span>
+                        </div>
+                        {originalPrice && (
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="text-sm text-silver-400 line-through">
+                              ${originalPrice.toLocaleString()} USD
+                            </span>
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold">
+                              Save ${originalPrice - price}
+                            </span>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
 
@@ -618,15 +607,27 @@ export default function PricingPage() {
                 <div className="p-8 pt-0">
                   <button
                     onClick={() => handleOpenCheckout(plan)}
+                    disabled={loading}
                     className={`w-full py-4 rounded-xl font-black text-xs uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-2 shadow-lg ${
-                      isPopular
+                      loading
+                        ? 'bg-navy-card border border-navy-border text-silver-400 cursor-not-allowed'
+                        : isPopular
                         ? 'bg-cyan-DEFAULT text-navy-dark hover:bg-cyan-300 shadow-[0_0_20px_rgba(0,229,255,0.4)]'
                         : 'bg-navy border border-cyan-DEFAULT/40 text-cyan-DEFAULT hover:bg-cyan-DEFAULT hover:text-navy-dark'
                     }`}
                   >
-                    <CreditCard className="w-4 h-4" />
-                    <span>Proceed to Secure Checkout</span>
-                    <ArrowRight className="w-4 h-4" />
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-cyan-DEFAULT" />
+                        <span>Verifying Pricing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="w-4 h-4" />
+                        <span>Proceed to Secure Checkout</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
                   </button>
                   <p className="text-center text-[10px] text-silver-400 mt-2">
                     Instant Razorpay checkout • All channels supported

@@ -5,19 +5,19 @@ const FALLBACK_PLANS = {
   'starter-architecture': {
     name: 'Starter Architecture',
     slug: 'starter-architecture',
-    price: 199,
+    price: 99,
     description: 'Ideal for early-stage startups & SMBs needing architectural blueprint, API roadmap, and MVP system design.',
   },
   'business-fullstack': {
     name: 'Business Full-Stack Platform',
     slug: 'business-fullstack',
-    price: 649,
+    price: 199,
     description: 'Comprehensive end-to-end full-stack engineering solution. Perfect for production web applications and portals.',
   },
   'enterprise-custom': {
     name: 'Enterprise Custom Solution',
     slug: 'enterprise-custom',
-    price: 1699,
+    price: 599,
     description: 'Bespoke high-scale engineering for large corporations, complex microservices, AI integration, and Oracle APEX migrations.',
   }
 };

@@ -38,6 +38,7 @@ import {
 import logoImg from '../../assets/spartan-logo.png';
 import { formatCurrencyAmount, SUPPORTED_CURRENCIES } from '../../utils/currency';
 import { printAuditReport } from '../../utils/auditReport';
+import { updateLivePlans } from '../../utils/pricingStore';
 
 // Divisors for calculating preview rates from base INR
 const PREVIEW_FX_DIVISORS = {
@@ -245,15 +246,14 @@ export default function AdminDashboardPage() {
       showToast(`Pricing for "${editingPlan.name}" updated live in database!`, 'success');
       setEditingPlan(null);
 
-      // Immediately sync local cache so /pricing displays new price with 0ms flicker
+      // Immediately sync in-memory pricing store so /pricing displays new price with 0ms delay
       if (data.plan) {
         const updatedPlans = pricingPlans.map(p => (p.id === data.plan.id || p.slug === data.plan.slug ? data.plan : p));
         setPricingPlans(updatedPlans);
+        updateLivePlans(updatedPlans);
         try {
-          localStorage.setItem('spartan_live_pricing_plans_usd', JSON.stringify(updatedPlans));
-        } catch (storageErr) {
-          console.warn('Local cache sync failed:', storageErr);
-        }
+          localStorage.removeItem('spartan_live_pricing_plans_usd');
+        } catch {}
       }
 
       fetchDashboardData(token, true);

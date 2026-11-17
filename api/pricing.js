@@ -4,8 +4,8 @@ const DEFAULT_PLANS = [
   {
     name: 'Starter Architecture',
     slug: 'starter-architecture',
-    price: 199,
-    originalPrice: 299,
+    price: 99,
+    originalPrice: 199,
     badge: 'Quick Launch',
     currency: 'USD',
     description: 'Ideal for early-stage startups & SMBs needing architectural blueprint, API roadmap, and MVP system design.',
@@ -29,8 +29,8 @@ const DEFAULT_PLANS = [
   {
     name: 'Business Full-Stack Platform',
     slug: 'business-fullstack',
-    price: 649,
-    originalPrice: 999,
+    price: 199,
+    originalPrice: 499,
     badge: 'Most Popular Choice',
     currency: 'USD',
     description: 'Comprehensive end-to-end full-stack engineering solution. Perfect for production web applications and portals.',
@@ -56,8 +56,8 @@ const DEFAULT_PLANS = [
   {
     name: 'Enterprise Custom Solution',
     slug: 'enterprise-custom',
-    price: 1699,
-    originalPrice: 2599,
+    price: 599,
+    originalPrice: 1499,
     badge: 'Maximum Performance',
     currency: 'USD',
     description: 'Bespoke high-scale engineering for large corporations, complex microservices, AI integration, and Oracle APEX migrations.',

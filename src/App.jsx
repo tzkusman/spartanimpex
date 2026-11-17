@@ -6,6 +6,7 @@ import ScrollToTop from './components/common/ScrollToTop';
 import CyberItCursor from './components/common/CyberItCursor';
 import VisitorTracker from './components/common/VisitorTracker';
 import SeoHead from './components/common/SeoHead';
+import { prefetchPricing } from './utils/pricingStore';
 
 import HomePage from './pages/HomePage';
 import AboutPage from './pages/AboutPage';
@@ -24,6 +25,15 @@ import NotFoundPage from './pages/NotFoundPage';
 export default function App() {
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith('/admin');
+
+  React.useEffect(() => {
+    // Purge legacy stale pricing cache from localStorage
+    try {
+      localStorage.removeItem('spartan_live_pricing_plans_usd');
+    } catch {}
+    // Eagerly prefetch live database pricing in the background on initial application visit
+    prefetchPricing();
+  }, []);
 
   return (
     <div className="flex flex-col min-h-screen bg-navy text-navy-50 font-sans selection:bg-cyan-500/20 selection:text-cyan-300 relative">
